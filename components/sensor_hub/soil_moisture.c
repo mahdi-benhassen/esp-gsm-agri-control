@@ -23,16 +23,10 @@ esp_err_t soil_moisture_init(void)
         .bitwidth = ADC_BITWIDTH_12,
     };
     
-    // Support fallback to 11dB if needed, but ADC_ATTEN_DB_12 is standard in ESP-IDF v5
     err = adc_oneshot_config_channel(s_adc_handle, CONFIG_SOIL_MOISTURE_ADC_CHANNEL, &chan_cfg);
     if (err != ESP_OK) {
-        // Retry with 11dB if 12dB config is not supported on older v5.x builds
-        chan_cfg.atten = ADC_ATTEN_DB_11;
-        err = adc_oneshot_config_channel(s_adc_handle, CONFIG_SOIL_MOISTURE_ADC_CHANNEL, &chan_cfg);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to config ADC channel: %s", esp_err_to_name(err));
-            return err;
-        }
+        ESP_LOGE(TAG, "Failed to config ADC channel: %s", esp_err_to_name(err));
+        return err;
     }
     
     ESP_LOGI(TAG, "Soil moisture ADC initialized on Channel %d", CONFIG_SOIL_MOISTURE_ADC_CHANNEL);
