@@ -1,11 +1,13 @@
 #include "mqtt_client_wrapper.h"
-#include "mqtt_client.h"
-#include "esp_log.h"
-#include "esp_mac.h"
 #include "cJSON.h"
 #include "config_store.h"
+#include "esp_log.h"
+#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "mqtt_client.h"
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "MQTT_WRAPPER";
@@ -15,197 +17,295 @@ ESP_EVENT_DEFINE_BASE(MQTT_APP_EVENTS);
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_connected = false;
 static char s_device_id[32] = {0};
+static SemaphoreHandle_t s_mutex = NULL;
 
-static void build_topic(const char *suffix, char *buf, size_t len)
-{
-    snprintf(buf, len, "%s/%s/%s", CONFIG_MQTT_DEVICE_ID_PREFIX, s_device_id, suffix);
+static void build_topic(const char *suffix, char *buf, size_t len) {
+  snprintf(buf, len, "%s/%s/%s", CONFIG_MQTT_DEVICE_ID_PREFIX, s_device_id,
+           suffix);
 }
 
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
-{
-    esp_mqtt_event_handle_t event = event_data;
-    esp_mqtt_client_handle_t client = event->client;
-    char topic_buf[128];
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
+                               int32_t event_id, void *event_data) {
+  esp_mqtt_event_handle_t event = event_data;
+  esp_mqtt_client_handle_t client = event->client;
+  char topic_buf[128];
 
-    switch ((esp_mqtt_event_id_t)event_id) {
-        case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT Connected");
-            s_connected = true;
+  switch ((esp_mqtt_event_id_t)event_id) {
+  case MQTT_EVENT_CONNECTED:
+    ESP_LOGI(TAG, "MQTT Connected");
+    if (s_mutex)
+      xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_connected = true;
+    if (s_mutex)
+      xSemaphoreGive(s_mutex);
 
-            // Subscribe to cmd topic
-            build_topic("cmd", topic_buf, sizeof(topic_buf));
-            esp_mqtt_client_subscribe(client, topic_buf, 1);
-            ESP_LOGI(TAG, "Subscribed to: %s", topic_buf);
+    build_topic("cmd", topic_buf, sizeof(topic_buf));
+    esp_mqtt_client_subscribe(client, topic_buf, 1);
+    ESP_LOGI(TAG, "Subscribed to: %s", topic_buf);
 
-            // Publish Birth message
-            build_topic("status", topic_buf, sizeof(topic_buf));
-            esp_mqtt_client_publish(client, topic_buf, "{\"status\":\"online\"}", 0, 1, 1);
+    build_topic("status", topic_buf, sizeof(topic_buf));
+    esp_mqtt_client_publish(client, topic_buf, "{\"status\":\"online\"}", 0, 1,
+                            1);
 
-            esp_event_post(MQTT_APP_EVENTS, MQTT_APP_EVENT_CONNECTED, NULL, 0, pdMS_TO_TICKS(100));
-            break;
+    esp_event_post(MQTT_APP_EVENTS, MQTT_APP_EVENT_CONNECTED, NULL, 0,
+                   pdMS_TO_TICKS(100));
+    break;
 
-        case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGW(TAG, "MQTT Disconnected");
-            s_connected = false;
-            esp_event_post(MQTT_APP_EVENTS, MQTT_APP_EVENT_DISCONNECTED, NULL, 0, pdMS_TO_TICKS(100));
-            break;
+  case MQTT_EVENT_DISCONNECTED:
+    ESP_LOGW(TAG, "MQTT Disconnected");
+    if (s_mutex)
+      xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_connected = false;
+    if (s_mutex)
+      xSemaphoreGive(s_mutex);
+    esp_event_post(MQTT_APP_EVENTS, MQTT_APP_EVENT_DISCONNECTED, NULL, 0,
+                   pdMS_TO_TICKS(100));
+    break;
 
-        case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "MQTT Data topic: %.*s", event->topic_len, event->topic);
-            
-            // Dispatch command payload to command_handler
-            mqtt_command_event_t cmd_evt = {
-                .data = malloc(event->data_len + 1),
-                .data_len = event->data_len
-            };
-            if (cmd_evt.data) {
-                memcpy(cmd_evt.data, event->data, event->data_len);
-                cmd_evt.data[event->data_len] = '\0';
-                
-                esp_event_post(MQTT_APP_EVENTS, MQTT_APP_EVENT_COMMAND_RECEIVED, &cmd_evt, sizeof(cmd_evt), pdMS_TO_TICKS(100));
-            } else {
-                ESP_LOGE(TAG, "Failed to allocate memory for command payload");
-            }
-            break;
-
-        case MQTT_EVENT_ERROR:
-            ESP_LOGE(TAG, "MQTT Error event");
-            break;
-
-        default:
-            break;
-    }
-}
-
-esp_err_t mqtt_wrapper_init(void)
-{
-    // Generate device id from MAC address
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(s_device_id, sizeof(s_device_id), "%02X%02X%02X%02X%02X%02X", 
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    
-    ESP_LOGI(TAG, "Device ID generated: %s", s_device_id);
-
-    const app_config_t *cfg = config_store_get();
-    const char *broker_uri = (cfg && strlen(cfg->mqtt_broker_uri) > 0) ? cfg->mqtt_broker_uri : CONFIG_MQTT_BROKER_URI;
-    
-    ESP_LOGI(TAG, "Connecting to broker: %s", broker_uri);
-
-    char lwt_topic[128];
-    build_topic("status", lwt_topic, sizeof(lwt_topic));
-
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = broker_uri,
-        .session.last_will = {
-            .topic = lwt_topic,
-            .msg = "{\"status\":\"offline\"}",
-            .qos = 1,
-            .retain = 1,
-        }
-    };
-
-    s_client = esp_mqtt_client_init(&mqtt_cfg);
-    if (s_client == NULL) {
-        ESP_LOGE(TAG, "Failed to init MQTT client");
-        return ESP_FAIL;
+  case MQTT_EVENT_DATA: {
+    ESP_LOGI(TAG, "MQTT Data topic: %.*s", event->topic_len, event->topic);
+    mqtt_command_event_t cmd_evt = {.data = malloc(event->data_len + 1),
+                                    .data_len = event->data_len};
+    if (cmd_evt.data == NULL) {
+      ESP_LOGE(TAG, "Failed to allocate memory for command payload");
+      break;
     }
 
-    esp_err_t err = esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    memcpy(cmd_evt.data, event->data, event->data_len);
+    cmd_evt.data[event->data_len] = '\0';
+
+    esp_err_t err =
+        esp_event_post(MQTT_APP_EVENTS, MQTT_APP_EVENT_COMMAND_RECEIVED,
+                       &cmd_evt, sizeof(cmd_evt), pdMS_TO_TICKS(100));
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to register MQTT event: %s", esp_err_to_name(err));
-        return err;
+      ESP_LOGE(TAG, "Failed to post MQTT command event: %s",
+               esp_err_to_name(err));
+      free(cmd_evt.data);
     }
+    break;
+  }
 
-    err = esp_mqtt_client_start(s_client);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start MQTT client: %s", esp_err_to_name(err));
-        return err;
-    }
+  case MQTT_EVENT_ERROR:
+    ESP_LOGE(TAG, "MQTT Error event");
+    break;
 
-    return ESP_OK;
+  default:
+    break;
+  }
 }
 
-esp_err_t mqtt_wrapper_publish_sensor_data(const sensor_data_t *data)
-{
-    if (!s_connected || s_client == NULL) {
-        return ESP_ERR_INVALID_STATE;
+static esp_err_t mqtt_wrapper_start_locked(void) {
+  app_config_t cfg;
+  esp_err_t err = config_store_get_snapshot(&cfg);
+  const char *broker_uri = CONFIG_MQTT_BROKER_URI;
+  if (err == ESP_OK && strlen(cfg.mqtt_broker_uri) > 0) {
+    broker_uri = cfg.mqtt_broker_uri;
+  }
+
+  ESP_LOGI(TAG, "Connecting to broker: %s", broker_uri);
+
+  char lwt_topic[128];
+  build_topic("status", lwt_topic, sizeof(lwt_topic));
+
+  esp_mqtt_client_config_t mqtt_cfg = {.broker.address.uri = broker_uri,
+                                       .session.last_will = {
+                                           .topic = lwt_topic,
+                                           .msg = "{\"status\":\"offline\"}",
+                                           .qos = 1,
+                                           .retain = 1,
+                                       }};
+
+  s_client = esp_mqtt_client_init(&mqtt_cfg);
+  if (s_client == NULL) {
+    ESP_LOGE(TAG, "Failed to init MQTT client");
+    return ESP_FAIL;
+  }
+
+  err = esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID,
+                                       mqtt_event_handler, NULL);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to register MQTT event: %s", esp_err_to_name(err));
+    esp_mqtt_client_destroy(s_client);
+    s_client = NULL;
+    return err;
+  }
+
+  err = esp_mqtt_client_start(s_client);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to start MQTT client: %s", esp_err_to_name(err));
+    esp_mqtt_client_destroy(s_client);
+    s_client = NULL;
+    return err;
+  }
+
+  return ESP_OK;
+}
+
+esp_err_t mqtt_wrapper_init(void) {
+  if (s_mutex == NULL) {
+    s_mutex = xSemaphoreCreateMutex();
+    if (s_mutex == NULL) {
+      return ESP_ERR_NO_MEM;
     }
+  }
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "soil_moisture", data->soil_moisture_pct);
-    cJSON_AddNumberToObject(root, "temperature", data->temperature_c);
-    cJSON_AddNumberToObject(root, "humidity", data->humidity_pct);
-    cJSON_AddBoolToObject(root, "sensors_valid", data->sensors_valid);
-    cJSON_AddNumberToObject(root, "timestamp", (double)data->timestamp_ms);
+  uint8_t mac[6];
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  snprintf(s_device_id, sizeof(s_device_id), "%02X%02X%02X%02X%02X%02X", mac[0],
+           mac[1], mac[2], mac[3], mac[4], mac[5]);
+  ESP_LOGI(TAG, "Device ID generated: %s", s_device_id);
 
-    char *json_str = cJSON_PrintUnformatted(root);
+  return mqtt_wrapper_start_locked();
+}
+
+esp_err_t mqtt_wrapper_reconfigure(void) {
+  if (s_mutex == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  ESP_LOGW(TAG, "Reconfiguring MQTT client with updated broker settings");
+
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  esp_mqtt_client_handle_t old_client = s_client;
+  s_client = NULL;
+  s_connected = false;
+  xSemaphoreGive(s_mutex);
+
+  if (old_client != NULL) {
+    esp_mqtt_client_stop(old_client);
+    esp_mqtt_client_destroy(old_client);
+  }
+
+  return mqtt_wrapper_start_locked();
+}
+
+esp_err_t mqtt_wrapper_publish_sensor_data(const sensor_data_t *data) {
+  if (data == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (!mqtt_wrapper_is_connected()) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  cJSON *root = cJSON_CreateObject();
+  if (root == NULL) {
+    return ESP_ERR_NO_MEM;
+  }
+  if (cJSON_AddNumberToObject(root, "soil_moisture", data->soil_moisture_pct) ==
+          NULL ||
+      cJSON_AddNumberToObject(root, "temperature", data->temperature_c) ==
+          NULL ||
+      cJSON_AddNumberToObject(root, "humidity", data->humidity_pct) == NULL ||
+      cJSON_AddBoolToObject(root, "sensors_valid", data->sensors_valid) ==
+          NULL ||
+      cJSON_AddNumberToObject(root, "timestamp", (double)data->timestamp_ms) ==
+          NULL) {
     cJSON_Delete(root);
+    return ESP_ERR_NO_MEM;
+  }
 
-    char topic[128];
-    build_topic("sensors", topic, sizeof(topic));
+  char *json_str = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  if (json_str == NULL) {
+    return ESP_ERR_NO_MEM;
+  }
 
-    int msg_id = esp_mqtt_client_publish(s_client, topic, json_str, 0, 1, 0);
-    free(json_str);
+  char topic[128];
+  build_topic("sensors", topic, sizeof(topic));
 
-    if (msg_id < 0) {
-        ESP_LOGE(TAG, "Failed to publish sensor data");
-        return ESP_FAIL;
-    }
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  esp_mqtt_client_handle_t client = s_client;
+  int msg_id = (client != NULL && s_connected)
+                   ? esp_mqtt_client_publish(client, topic, json_str, 0, 1, 0)
+                   : -1;
+  xSemaphoreGive(s_mutex);
+  free(json_str);
 
-    return ESP_OK;
+  if (msg_id < 0) {
+    ESP_LOGE(TAG, "Failed to publish sensor data");
+    return ESP_FAIL;
+  }
+
+  return ESP_OK;
 }
 
-esp_err_t mqtt_wrapper_publish_relay_state(int channel, bool state)
-{
-    if (!s_connected || s_client == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
+esp_err_t mqtt_wrapper_publish_relay_state(int channel, bool state) {
+  if (!mqtt_wrapper_is_connected()) {
+    return ESP_ERR_INVALID_STATE;
+  }
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "channel", channel);
-    cJSON_AddBoolToObject(root, "state", state);
-
-    char *json_str = cJSON_PrintUnformatted(root);
+  cJSON *root = cJSON_CreateObject();
+  if (root == NULL) {
+    return ESP_ERR_NO_MEM;
+  }
+  if (cJSON_AddNumberToObject(root, "channel", channel) == NULL ||
+      cJSON_AddBoolToObject(root, "state", state) == NULL) {
     cJSON_Delete(root);
+    return ESP_ERR_NO_MEM;
+  }
 
-    char topic[128];
-    build_topic("relays", topic, sizeof(topic));
+  char *json_str = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  if (json_str == NULL) {
+    return ESP_ERR_NO_MEM;
+  }
 
-    int msg_id = esp_mqtt_client_publish(s_client, topic, json_str, 0, 1, 0);
-    free(json_str);
+  char topic[128];
+  build_topic("relays", topic, sizeof(topic));
 
-    if (msg_id < 0) {
-        ESP_LOGE(TAG, "Failed to publish relay state");
-        return ESP_FAIL;
-    }
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  esp_mqtt_client_handle_t client = s_client;
+  int msg_id = (client != NULL && s_connected)
+                   ? esp_mqtt_client_publish(client, topic, json_str, 0, 1, 0)
+                   : -1;
+  xSemaphoreGive(s_mutex);
+  free(json_str);
 
-    return ESP_OK;
+  if (msg_id < 0) {
+    ESP_LOGE(TAG, "Failed to publish relay state");
+    return ESP_FAIL;
+  }
+
+  return ESP_OK;
 }
 
-esp_err_t mqtt_wrapper_publish_status(const char *status_json)
-{
-    return mqtt_wrapper_publish("status", status_json);
+esp_err_t mqtt_wrapper_publish_status(const char *status_json) {
+  return mqtt_wrapper_publish("status", status_json);
 }
 
-esp_err_t mqtt_wrapper_publish(const char *topic_suffix, const char *payload)
-{
-    if (!s_connected || s_client == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
+esp_err_t mqtt_wrapper_publish(const char *topic_suffix, const char *payload) {
+  if (topic_suffix == NULL || payload == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (!mqtt_wrapper_is_connected()) {
+    return ESP_ERR_INVALID_STATE;
+  }
 
-    char topic[128];
-    build_topic(topic_suffix, topic, sizeof(topic));
+  char topic[128];
+  build_topic(topic_suffix, topic, sizeof(topic));
 
-    int msg_id = esp_mqtt_client_publish(s_client, topic, payload, 0, 1, 0);
-    if (msg_id < 0) {
-        ESP_LOGE(TAG, "Failed to publish to topic: %s", topic);
-        return ESP_FAIL;
-    }
-    return ESP_OK;
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  esp_mqtt_client_handle_t client = s_client;
+  if (client == NULL || !s_connected) {
+    xSemaphoreGive(s_mutex);
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  int msg_id = esp_mqtt_client_publish(client, topic, payload, 0, 1, 0);
+  xSemaphoreGive(s_mutex);
+  if (msg_id < 0) {
+    ESP_LOGE(TAG, "Failed to publish to topic: %s", topic);
+    return ESP_FAIL;
+  }
+  return ESP_OK;
 }
 
-bool mqtt_wrapper_is_connected(void)
-{
-    return s_connected;
+bool mqtt_wrapper_is_connected(void) {
+  bool connected = false;
+  if (s_mutex)
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+  connected = s_connected && s_client != NULL;
+  if (s_mutex)
+    xSemaphoreGive(s_mutex);
+  return connected;
 }
