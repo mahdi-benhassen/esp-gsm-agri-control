@@ -1,0 +1,15 @@
+menu "System Monitor Configuration"
+
+    config SYSMON_REPORT_INTERVAL_SEC
+        int "System Monitor Report Interval (seconds)"
+        default 60
+        help
+            How often the system monitor task logs heap stats.
+
+    config SYSMON_LOW_HEAP_THRESHOLD
+        int "Low Free Heap Size Warning Threshold (bytes)"
+        default 8192
+        help
+            Log warning level message if free heap falls below this value.
+
+endmenu

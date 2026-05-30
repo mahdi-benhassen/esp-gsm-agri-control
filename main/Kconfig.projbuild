@@ -1,0 +1,9 @@
+menu "Agriculture Smart Control System Configuration"
+
+    config APP_VERSION
+        string "Firmware Version"
+        default "1.0.0"
+        help
+            Version string of the firmware application.
+
+endmenu

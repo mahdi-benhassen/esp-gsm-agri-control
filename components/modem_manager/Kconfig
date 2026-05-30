@@ -1,0 +1,65 @@
+menu "Modem Manager Configuration"
+
+    config MODEM_UART_TX_PIN
+        int "Modem UART TX GPIO"
+        default 17
+        help
+            ESP32 GPIO pin connected to Modem RX pin.
+
+    config MODEM_UART_RX_PIN
+        int "Modem UART RX GPIO"
+        default 16
+        help
+            ESP32 GPIO pin connected to Modem TX pin.
+
+    config MODEM_UART_RTS_PIN
+        int "Modem UART RTS GPIO (-1 to disable)"
+        default -1
+        help
+            GPIO for RTS pin, set to -1 to disable hardware flow control.
+
+    config MODEM_UART_CTS_PIN
+        int "Modem UART CTS GPIO (-1 to disable)"
+        default -1
+        help
+            GPIO for CTS pin, set to -1 to disable hardware flow control.
+
+    config MODEM_UART_BAUD_RATE
+        int "Modem UART Baud Rate"
+        default 115200
+        help
+            Baud rate for serial communication with modem.
+
+    config MODEM_POWER_PIN
+        int "Modem PWRKEY GPIO Pin"
+        default 4
+        help
+            ESP32 GPIO pin connected to modem power key (PWRKEY) for power pulsing.
+
+    config MODEM_POWER_ON_PULSE_MS
+        int "Modem Power-On Pulse Duration (ms)"
+        default 1000
+        help
+            Duration in milliseconds to hold the PWRKEY pin active to power up the modem.
+
+    config MODEM_APN
+        string "Cellular APN"
+        default "internet"
+        help
+            Access Point Name for cellular data network (e.g. "internet", "mnet", etc.).
+
+    config MODEM_RECONNECT_INTERVAL_SEC
+        int "Modem Reconnect Loop Interval (sec)"
+        default 10
+        help
+            Time to check PPP state and attempt reconnection if lost.
+
+    config MODEM_UART_RX_BUFFER_SIZE
+        int "Modem UART RX Buffer Size"
+        default 4096
+
+    config MODEM_UART_TX_BUFFER_SIZE
+        int "Modem UART TX Buffer Size"
+        default 512
+
+endmenu

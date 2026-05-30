@@ -1,0 +1,39 @@
+menu "Sensor Hub Configuration"
+
+    config SOIL_MOISTURE_ADC_CHANNEL
+        int "Soil Moisture ADC1 Channel"
+        default 6
+        help
+            ADC1 channel number. GPIO34 is ADC1 Channel 6.
+
+    config SOIL_MOISTURE_SAMPLES
+        int "Soil Moisture Sample Averaging Count"
+        default 10
+        help
+            Number of ADC samples to take and average to reduce noise.
+
+    config SOIL_MOISTURE_DRY_VALUE
+        int "Raw ADC Dry Calibration Value"
+        default 2800
+        help
+            Raw ADC reading when the soil moisture sensor is completely dry (in air).
+
+    config SOIL_MOISTURE_WET_VALUE
+        int "Raw ADC Wet Calibration Value"
+        default 1200
+        help
+            Raw ADC reading when the soil moisture sensor is completely wet (in water).
+
+    config DHT22_GPIO
+        int "DHT22 Sensor GPIO Pin"
+        default 27
+        help
+            GPIO pin connected to the DHT22 temperature and humidity sensor.
+
+    config SENSOR_READ_INTERVAL_MS
+        int "Sensor Reading Periodic Interval (ms)"
+        default 30000
+        help
+            How often to read all sensors and update the internal cache.
+
+endmenu

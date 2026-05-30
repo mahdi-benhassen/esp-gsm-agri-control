@@ -1,0 +1,71 @@
+#include "system_monitor.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "esp_system.h"
+#include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "modem_manager.h"
+#include "mqtt_client_wrapper.h"
+
+static const char *TAG = "SYSTEM_MONITOR";
+static int64_t s_boot_time = 0;
+static TaskHandle_t s_task = NULL;
+
+static void monitor_task(void *pvParameters)
+{
+    ESP_LOGI(TAG, "System Monitor Task started.");
+    
+    while (1) {
+        uint32_t free_heap = esp_get_free_heap_size();
+        uint32_t min_free_heap = esp_get_minimum_free_heap_size();
+        uint32_t uptime = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+        
+        ESP_LOGI(TAG, "Uptime: %lu s | Free Heap: %lu B | Min Free Heap: %lu B", 
+                 (unsigned long)uptime, (unsigned long)free_heap, (unsigned long)min_free_heap);
+                 
+        if (free_heap < CONFIG_SYSMON_LOW_HEAP_THRESHOLD) {
+            ESP_LOGW(TAG, "Low heap warning! Free heap is below threshold: %d B", CONFIG_SYSMON_LOW_HEAP_THRESHOLD);
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_SYSMON_REPORT_INTERVAL_SEC * 1000));
+    }
+}
+
+esp_err_t system_monitor_init(void)
+{
+    s_boot_time = esp_timer_get_time();
+    
+    xTaskCreate(monitor_task, "sys_mon", 3072, NULL, 3, &s_task);
+    
+    ESP_LOGI(TAG, "System Monitor initialized.");
+    return ESP_OK;
+}
+
+esp_err_t system_monitor_get_status(system_status_t *status)
+{
+    status->uptime_sec = (uint32_t)((esp_timer_get_time() - s_boot_time) / 1000000ULL);
+    status->free_heap = esp_get_free_heap_size();
+    status->min_free_heap = esp_get_minimum_free_heap_size();
+    status->modem_rssi = modem_manager_get_rssi();
+    status->mqtt_connected = mqtt_wrapper_is_connected();
+    status->modem_connected = modem_manager_is_connected();
+    return ESP_OK;
+}
+
+char *system_monitor_status_to_json(const system_status_t *status)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) return NULL;
+    
+    cJSON_AddNumberToObject(root, "uptime", status->uptime_sec);
+    cJSON_AddNumberToObject(root, "free_heap", status->free_heap);
+    cJSON_AddNumberToObject(root, "min_free_heap", status->min_free_heap);
+    cJSON_AddNumberToObject(root, "modem_rssi", status->modem_rssi);
+    cJSON_AddBoolToObject(root, "mqtt_connected", status->mqtt_connected);
+    cJSON_AddBoolToObject(root, "modem_connected", status->modem_connected);
+    
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return json_str;
+}

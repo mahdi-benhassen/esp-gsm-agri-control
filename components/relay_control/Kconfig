@@ -1,0 +1,39 @@
+menu "Relay Control Configuration"
+
+    config RELAY_1_GPIO
+        int "Relay 1 GPIO (Pump 1)"
+        default 25
+        help
+            GPIO pin number connected to the first relay controlling Pump 1.
+
+    config RELAY_2_GPIO
+        int "Relay 2 GPIO (Pump 2)"
+        default 26
+        help
+            GPIO pin number connected to the second relay controlling Pump 2.
+
+    config RELAY_3_GPIO
+        int "Relay 3 GPIO (Valve 1)"
+        default 32
+        help
+            GPIO pin number connected to the third relay controlling Valve 1.
+
+    config RELAY_4_GPIO
+        int "Relay 4 GPIO (Valve 2)"
+        default 33
+        help
+            GPIO pin number connected to the fourth relay controlling Valve 2.
+
+    config RELAY_ACTIVE_LOW
+        bool "Relays are Active-Low"
+        default y
+        help
+            If checked, pulling GPIO LOW activates the relay. Otherwise, HIGH activates it.
+
+    config RELAY_MAX_ON_TIME_SEC
+        int "Relay Max On Time (Seconds)"
+        default 3600
+        help
+            The maximum time any relay can stay active. Timed relays will be clamped to this value.
+
+endmenu

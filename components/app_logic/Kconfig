@@ -1,0 +1,17 @@
+menu "Application Logic Configuration"
+
+    config APP_LOGIC_TASK_STACK_SIZE
+        int "App Logic Task Stack Size"
+        default 4096
+
+    config APP_LOGIC_TASK_PRIORITY
+        int "App Logic Task Priority"
+        default 5
+
+    config APP_PUBLISH_STATUS_INTERVAL_SEC
+        int "System Status Publish Interval (seconds)"
+        default 300
+        help
+            How often to publish system health parameters to MQTT status topic.
+
+endmenu

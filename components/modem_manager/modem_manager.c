@@ -1,0 +1,186 @@
+#include "modem_manager.h"
+#include "esp_modem_api.h"
+#include "esp_netif.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include <string.h>
+
+static const char *TAG = "MODEM_MANAGER";
+
+static esp_modem_dce_t *s_dce = NULL;
+static esp_netif_t *s_esp_netif = NULL;
+static bool s_connected = false;
+static SemaphoreHandle_t s_mutex = NULL;
+
+static void modem_power_on(void)
+{
+    ESP_LOGI(TAG, "Power pulsing modem (PWRKEY GPIO %d)...", CONFIG_MODEM_POWER_PIN);
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << CONFIG_MODEM_POWER_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    
+    // Hold low to power on
+    gpio_set_level(CONFIG_MODEM_POWER_PIN, 0);
+    vTaskDelay(pdMS_TO_TICKS(CONFIG_MODEM_POWER_ON_PULSE_MS));
+    gpio_set_level(CONFIG_MODEM_POWER_PIN, 1);
+    
+    ESP_LOGI(TAG, "Power pulse complete. Waiting for modem boot...");
+    vTaskDelay(pdMS_TO_TICKS(3000));
+}
+
+static void on_ip_event(void *arg, esp_event_base_t base, int32_t event_id, void *data)
+{
+    if (event_id == IP_EVENT_PPP_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+        ESP_LOGI(TAG, "PPPoS Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        
+        xSemaphoreTake(s_mutex, portMAX_DELAY);
+        s_connected = true;
+        xSemaphoreGive(s_mutex);
+    } else if (event_id == IP_EVENT_PPP_LOST_IP) {
+        ESP_LOGW(TAG, "PPPoS Lost IP");
+        
+        xSemaphoreTake(s_mutex, portMAX_DELAY);
+        s_connected = false;
+        xSemaphoreGive(s_mutex);
+    }
+}
+
+static void on_ppp_changed(void *arg, esp_event_base_t base, int32_t event_id, void *data)
+{
+    ESP_LOGI(TAG, "PPP Status changed event: %ld", event_id);
+}
+
+esp_err_t modem_manager_init(void)
+{
+    if (s_mutex == NULL) {
+        s_mutex = xSemaphoreCreateMutex();
+        if (s_mutex == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    // Register event handlers
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, &on_ppp_changed, NULL));
+
+    // Power cycle modem
+    modem_power_on();
+
+    // Create PPP Netif
+    esp_netif_config_t netif_ppp_config = ESP_NETIF_DEFAULT_PPP();
+    s_esp_netif = esp_netif_new(&netif_ppp_config);
+    if (s_esp_netif == NULL) {
+        ESP_LOGE(TAG, "Failed to create PPP netif");
+        return ESP_FAIL;
+    }
+
+    // DTE config
+    esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
+    dte_config.uart_config.tx_io_num = CONFIG_MODEM_UART_TX_PIN;
+    dte_config.uart_config.rx_io_num = CONFIG_MODEM_UART_RX_PIN;
+    dte_config.uart_config.rts_io_num = CONFIG_MODEM_UART_RTS_PIN;
+    dte_config.uart_config.cts_io_num = CONFIG_MODEM_UART_CTS_PIN;
+    dte_config.uart_config.rx_buffer_size = CONFIG_MODEM_UART_RX_BUFFER_SIZE;
+    dte_config.uart_config.tx_buffer_size = CONFIG_MODEM_UART_TX_BUFFER_SIZE;
+    dte_config.uart_config.baud_rate = CONFIG_MODEM_UART_BAUD_RATE;
+
+    // DCE config
+    esp_modem_dce_config_t dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_MODEM_APN);
+
+    ESP_LOGI(TAG, "Initializing esp_modem with APN: %s", CONFIG_MODEM_APN);
+    s_dce = esp_modem_new_dev(ESP_MODEM_DCE_SIM7600, &dte_config, &dce_config, s_esp_netif);
+    if (s_dce == NULL) {
+        ESP_LOGE(TAG, "Failed to create modem DCE");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Switching modem to data mode (PPP)...");
+    esp_err_t err = esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set modem to DATA mode: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Modem initialized successfully.");
+    return ESP_OK;
+}
+
+bool modem_manager_is_connected(void)
+{
+    bool conn = false;
+    if (s_mutex) {
+        xSemaphoreTake(s_mutex, portMAX_DELAY);
+        conn = s_connected;
+        xSemaphoreGive(s_mutex);
+    }
+    return conn;
+}
+
+int modem_manager_get_rssi(void)
+{
+    if (s_dce == NULL) {
+        return -1;
+    }
+
+    int rssi = -1;
+    int ber = -1;
+
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    
+    // Switch to command mode
+    esp_err_t err = esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
+    if (err == ESP_OK) {
+        err = esp_modem_get_signal_quality(s_dce, &rssi, &ber);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Signal quality query: RSSI=%d, BER=%d", rssi, ber);
+        } else {
+            ESP_LOGE(TAG, "Failed to get signal quality: %s", esp_err_to_name(err));
+        }
+        // Switch back to data mode
+        esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
+    } else {
+        ESP_LOGE(TAG, "Failed to switch to command mode: %s", esp_err_to_name(err));
+    }
+
+    xSemaphoreGive(s_mutex);
+    return rssi;
+}
+
+esp_err_t modem_manager_reconnect(void)
+{
+    ESP_LOGW(TAG, "Modem reconnection requested...");
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_connected = false;
+    
+    if (s_dce) {
+        esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
+        // Soft reset
+        esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
+    }
+    xSemaphoreGive(s_mutex);
+    return ESP_OK;
+}
+
+esp_err_t modem_manager_deinit(void)
+{
+    ESP_LOGI(TAG, "Deinitializing modem...");
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (s_dce) {
+        esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
+        esp_modem_destroy(s_dce);
+        s_dce = NULL;
+    }
+    s_connected = false;
+    xSemaphoreGive(s_mutex);
+    return ESP_OK;
+}
