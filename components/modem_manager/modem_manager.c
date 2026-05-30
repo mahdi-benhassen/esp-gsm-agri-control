@@ -1,6 +1,7 @@
 #include "modem_manager.h"
 #include "esp_modem_api.h"
 #include "esp_netif.h"
+#include "esp_netif_ppp.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
@@ -83,6 +84,13 @@ esp_err_t modem_manager_init(void)
         ESP_LOGE(TAG, "Failed to create PPP netif");
         return ESP_FAIL;
     }
+
+    // Enable PPP events
+    esp_netif_ppp_config_t ppp_config = {
+        .ppp_phase_event_enabled = true,
+        .ppp_error_event_enabled = true
+    };
+    esp_netif_ppp_set_params(s_esp_netif, &ppp_config);
 
     // DTE config
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
