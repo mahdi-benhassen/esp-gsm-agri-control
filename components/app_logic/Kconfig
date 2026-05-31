@@ -14,4 +14,13 @@ menu "Application Logic Configuration"
         help
             How often to publish system health parameters to MQTT status topic.
 
+    config APP_IRRIGATION_HYSTERESIS_PCT
+        int "Auto-irrigation re-arm hysteresis percentage"
+        range 0 50
+        default 5
+        help
+            Auto-irrigation starts below the configured moisture threshold and
+            re-arms only after moisture rises at least this many percentage
+            points above that threshold.
+
 endmenu

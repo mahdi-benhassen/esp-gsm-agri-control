@@ -18,7 +18,7 @@ static bool s_connected = false;
 static int s_last_rssi = -1;
 static SemaphoreHandle_t s_mutex = NULL;
 
-static void modem_power_on(void) {
+static esp_err_t modem_power_on(void) {
   ESP_LOGI(TAG, "Power pulsing modem (PWRKEY GPIO %d)...",
            CONFIG_MODEM_POWER_PIN);
   gpio_config_t io_conf = {
@@ -28,7 +28,12 @@ static void modem_power_on(void) {
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
       .intr_type = GPIO_INTR_DISABLE,
   };
-  gpio_config(&io_conf);
+  esp_err_t err = gpio_config(&io_conf);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to configure modem power GPIO: %s",
+             esp_err_to_name(err));
+    return err;
+  }
 
   // Hold low to power on
   gpio_set_level(CONFIG_MODEM_POWER_PIN, 0);
@@ -37,6 +42,7 @@ static void modem_power_on(void) {
 
   ESP_LOGI(TAG, "Power pulse complete. Waiting for modem boot...");
   vTaskDelay(pdMS_TO_TICKS(3000));
+  return ESP_OK;
 }
 
 static void on_ip_event(void *arg, esp_event_base_t base, int32_t event_id,
@@ -62,6 +68,35 @@ static void on_ppp_changed(void *arg, esp_event_base_t base, int32_t event_id,
   ESP_LOGI(TAG, "PPP Status changed event: %ld", event_id);
 }
 
+static void modem_manager_cleanup_partial(bool ip_handler_registered,
+                                          bool ppp_handler_registered) {
+  if (s_dce != NULL) {
+    esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
+    esp_modem_destroy(s_dce);
+    s_dce = NULL;
+  }
+
+  if (s_esp_netif != NULL) {
+    esp_netif_destroy(s_esp_netif);
+    s_esp_netif = NULL;
+  }
+
+  if (ip_handler_registered) {
+    esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event);
+  }
+  if (ppp_handler_registered) {
+    esp_event_handler_unregister(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID,
+                                 &on_ppp_changed);
+  }
+
+  if (s_mutex != NULL) {
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_connected = false;
+    s_last_rssi = -1;
+    xSemaphoreGive(s_mutex);
+  }
+}
+
 esp_err_t modem_manager_init(void) {
   if (s_mutex == NULL) {
     s_mutex = xSemaphoreCreateMutex();
@@ -70,27 +105,57 @@ esp_err_t modem_manager_init(void) {
     }
   }
 
-  // Register event handlers
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID,
-                                             &on_ip_event, NULL));
-  ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID,
-                                             &on_ppp_changed, NULL));
+  bool ip_handler_registered = false;
+  bool ppp_handler_registered = false;
+
+  esp_err_t err = esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID,
+                                             &on_ip_event, NULL);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to register IP event handler: %s",
+             esp_err_to_name(err));
+    return err;
+  }
+  ip_handler_registered = true;
+
+  err = esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID,
+                                   &on_ppp_changed, NULL);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to register PPP event handler: %s",
+             esp_err_to_name(err));
+    modem_manager_cleanup_partial(ip_handler_registered,
+                                  ppp_handler_registered);
+    return err;
+  }
+  ppp_handler_registered = true;
 
   // Power cycle modem
-  modem_power_on();
+  err = modem_power_on();
+  if (err != ESP_OK) {
+    modem_manager_cleanup_partial(ip_handler_registered,
+                                  ppp_handler_registered);
+    return err;
+  }
 
   // Create PPP Netif
   esp_netif_config_t netif_ppp_config = ESP_NETIF_DEFAULT_PPP();
   s_esp_netif = esp_netif_new(&netif_ppp_config);
   if (s_esp_netif == NULL) {
     ESP_LOGE(TAG, "Failed to create PPP netif");
+    modem_manager_cleanup_partial(ip_handler_registered,
+                                  ppp_handler_registered);
     return ESP_FAIL;
   }
 
   // Enable PPP events
   esp_netif_ppp_config_t ppp_config = {.ppp_phase_event_enabled = true,
                                        .ppp_error_event_enabled = true};
-  esp_netif_ppp_set_params(s_esp_netif, &ppp_config);
+  err = esp_netif_ppp_set_params(s_esp_netif, &ppp_config);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to configure PPP netif: %s", esp_err_to_name(err));
+    modem_manager_cleanup_partial(ip_handler_registered,
+                                  ppp_handler_registered);
+    return err;
+  }
 
   // DTE config
   esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
@@ -111,6 +176,8 @@ esp_err_t modem_manager_init(void) {
                             s_esp_netif);
   if (s_dce == NULL) {
     ESP_LOGE(TAG, "Failed to create modem DCE");
+    modem_manager_cleanup_partial(ip_handler_registered,
+                                  ppp_handler_registered);
     return ESP_FAIL;
   }
 
@@ -130,9 +197,11 @@ esp_err_t modem_manager_init(void) {
   }
 
   ESP_LOGI(TAG, "Switching modem to data mode (PPP)...");
-  esp_err_t err = esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
+  err = esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to set modem to DATA mode: %s", esp_err_to_name(err));
+    modem_manager_cleanup_partial(ip_handler_registered,
+                                  ppp_handler_registered);
     return err;
   }
 
@@ -176,13 +245,6 @@ esp_err_t modem_manager_reconnect(void) {
 
 esp_err_t modem_manager_deinit(void) {
   ESP_LOGI(TAG, "Deinitializing modem...");
-  xSemaphoreTake(s_mutex, portMAX_DELAY);
-  if (s_dce) {
-    esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
-    esp_modem_destroy(s_dce);
-    s_dce = NULL;
-  }
-  s_connected = false;
-  xSemaphoreGive(s_mutex);
+  modem_manager_cleanup_partial(true, true);
   return ESP_OK;
 }

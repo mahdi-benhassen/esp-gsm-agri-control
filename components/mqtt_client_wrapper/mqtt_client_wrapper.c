@@ -64,6 +64,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 
   case MQTT_EVENT_DATA: {
     ESP_LOGI(TAG, "MQTT Data topic: %.*s", event->topic_len, event->topic);
+    // Ownership of this heap buffer is transferred to the command handler when
+    // the event is posted successfully; free it here only if posting fails.
     mqtt_command_event_t cmd_evt = {.data = malloc(event->data_len + 1),
                                     .data_len = event->data_len};
     if (cmd_evt.data == NULL) {
@@ -94,7 +96,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   }
 }
 
-static esp_err_t mqtt_wrapper_start_locked(void) {
+static esp_err_t mqtt_wrapper_start_client(void) {
   app_config_t cfg;
   esp_err_t err = config_store_get_snapshot(&cfg);
   const char *broker_uri = CONFIG_MQTT_BROKER_URI;
@@ -155,7 +157,7 @@ esp_err_t mqtt_wrapper_init(void) {
            mac[1], mac[2], mac[3], mac[4], mac[5]);
   ESP_LOGI(TAG, "Device ID generated: %s", s_device_id);
 
-  return mqtt_wrapper_start_locked();
+  return mqtt_wrapper_start_client();
 }
 
 esp_err_t mqtt_wrapper_reconfigure(void) {
@@ -176,7 +178,7 @@ esp_err_t mqtt_wrapper_reconfigure(void) {
     esp_mqtt_client_destroy(old_client);
   }
 
-  return mqtt_wrapper_start_locked();
+  return mqtt_wrapper_start_client();
 }
 
 esp_err_t mqtt_wrapper_publish_sensor_data(const sensor_data_t *data) {
