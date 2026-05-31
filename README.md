@@ -39,7 +39,7 @@ Ensure you have ESP-IDF v5.0 or later installed and configured in your shell env
 
 1. Configure the project:
    ```bash
-   idf_py menuconfig
+   idf.py menuconfig
    ```
    Navigate to the component configuration menus under `Component config -> Modem Manager Configuration`, `Component config -> Sensor Hub Configuration`, etc. to adjust UART pins, sensor parameters, and MQTT settings.
    

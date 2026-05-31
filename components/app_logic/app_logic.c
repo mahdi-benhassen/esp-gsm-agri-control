@@ -14,6 +14,7 @@
 
 static const char *TAG = "APP_LOGIC";
 static TaskHandle_t s_task = NULL;
+static bool s_auto_irrigation_armed = true;
 
 static void on_new_sensor_data(void *arg, esp_event_base_t base,
                                int32_t event_id, void *data) {
@@ -28,11 +29,26 @@ static void on_new_sensor_data(void *arg, esp_event_base_t base,
              sensor_data->soil_moisture_pct, sensor_data->temperature_c,
              sensor_data->sensors_valid);
 
-    // Auto irrigation check
+    // Auto irrigation check. Use a re-arm band so dry readings after a timed
+    // pump run do not immediately trigger another cycle until moisture
+    // recovers.
     if (sensor_data->sensors_valid && cfg.auto_irrigation_enabled) {
-      // Hysteresis: trigger only if dry, and pump is currently off
+      float rearm_threshold = cfg.soil_moisture_threshold +
+                              (float)CONFIG_APP_IRRIGATION_HYSTERESIS_PCT;
+      if (rearm_threshold > 100.0f) {
+        rearm_threshold = 100.0f;
+      }
+
+      if (!s_auto_irrigation_armed &&
+          sensor_data->soil_moisture_pct >= rearm_threshold) {
+        s_auto_irrigation_armed = true;
+        ESP_LOGI(TAG,
+                 "Auto-irrigation re-armed at %.1f%% moisture (re-arm %.1f%%)",
+                 sensor_data->soil_moisture_pct, (double)rearm_threshold);
+      }
+
       bool pump_active = relay_get(RELAY_CH_PUMP_1);
-      if (!pump_active &&
+      if (s_auto_irrigation_armed && !pump_active &&
           (sensor_data->soil_moisture_pct < cfg.soil_moisture_threshold)) {
         ESP_LOGW(TAG,
                  "Soil moisture (%.1f%%) below threshold (%.1f%%)! Starting "
@@ -40,8 +56,17 @@ static void on_new_sensor_data(void *arg, esp_event_base_t base,
                  sensor_data->soil_moisture_pct, cfg.soil_moisture_threshold,
                  (unsigned long)cfg.irrigation_duration_sec);
 
-        relay_set_timed(RELAY_CH_PUMP_1, cfg.irrigation_duration_sec);
+        esp_err_t relay_err =
+            relay_set_timed(RELAY_CH_PUMP_1, cfg.irrigation_duration_sec);
+        if (relay_err == ESP_OK) {
+          s_auto_irrigation_armed = false;
+        } else {
+          ESP_LOGE(TAG, "Failed to start auto-irrigation: %s",
+                   esp_err_to_name(relay_err));
+        }
       }
+    } else if (!cfg.auto_irrigation_enabled) {
+      s_auto_irrigation_armed = true;
     }
   }
 }
@@ -53,7 +78,12 @@ static void on_relay_changed(void *arg, esp_event_base_t base, int32_t event_id,
     ESP_LOGI(TAG, "Relay %d state changed to %s. Publishing status...",
              relay_data->channel, relay_data->state ? "ON" : "OFF");
 
-    mqtt_wrapper_publish_relay_state(relay_data->channel, relay_data->state);
+    esp_err_t err = mqtt_wrapper_publish_relay_state(relay_data->channel,
+                                                     relay_data->state);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to publish relay %d state: %s", relay_data->channel,
+               esp_err_to_name(err));
+    }
   }
 }
 
