@@ -25,7 +25,9 @@ app_main()
 ├── 15. Wait for cellular (60s timeout)
 ├── 16. command_handler_init()       — Register MQTT command handler
 ├── 17. mqtt_wrapper_init()          — Connect to broker, subscribe cmd
-└── 18. app_logic_start()            — Main loop (publish, LCD, inputs)
+├── 17. mqtt_wrapper_init()          — Connect to broker, subscribe cmd
+├── 18. app_logic_start()            — Main loop (publish, LCD, inputs)
+└── 19. web_server_init()            — WiFi AP+STA, HTTP server, web GUI
 ```
 
 ## Event Bus Layout
@@ -75,6 +77,7 @@ main
 ├── rs485_manager         (UART)
 ├── sd_card_logger        (SPI, FATFS) ── rtc_manager
 ├── system_monitor        (logging) ── modem_manager, mqtt_client_wrapper, rtc_manager, sd_card_logger
+├── web_server            (HTTP, WiFi) ── relay_control, sensor_hub, digital_input, modem_manager, mqtt_client_wrapper, config_store, system_monitor, rtc_manager
 ├── command_handler       (JSON) ── relay_control, config_store, sensor_hub, mqtt_client_wrapper, digital_input, rtc_manager, system_monitor
 ├── mqtt_client_wrapper   (esp_mqtt) ── config_store, sensor_hub
 └── app_logic             (orchestration) ── all of the above
