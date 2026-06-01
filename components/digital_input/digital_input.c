@@ -38,7 +38,11 @@ esp_err_t digital_input_init(void) {
     io_conf.pin_bit_mask |= (1ULL << s_input_pins[i]);
   }
 
-  gpio_config(&io_conf);
+  esp_err_t err = gpio_config(&io_conf);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "GPIO config failed: %s", esp_err_to_name(err));
+    return err;
+  }
 
   for (int i = 0; i < INPUT_COUNT; i++) {
     s_input_states[i] = input_read_raw(i);

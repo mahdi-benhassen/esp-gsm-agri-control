@@ -172,8 +172,18 @@ esp_err_t relay_set_timed(relay_channel_t ch, uint32_t duration_sec) {
 
 esp_err_t relay_all_off(void) {
   ESP_LOGW(TAG, "EMERGENCY: Turning all relays OFF");
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
   for (int i = 0; i < RELAY_CH_MAX; i++) {
-    relay_set(i, false);
+    esp_timer_stop(s_timers[i]);
+    gpio_set_level(s_relay_pins[i], gpio_level_for_state(false));
+    s_relay_states[i] = false;
+  }
+  xSemaphoreGive(s_mutex);
+
+  for (int i = 0; i < RELAY_CH_MAX; i++) {
+    relay_event_data_t event_data = {.channel = i, .state = false};
+    esp_event_post(RELAY_EVENTS, RELAY_EVENT_STATE_CHANGED, &event_data,
+                   sizeof(event_data), pdMS_TO_TICKS(100));
   }
   return ESP_OK;
 }

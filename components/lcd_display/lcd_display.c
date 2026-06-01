@@ -92,6 +92,7 @@ static esp_err_t ssd1306_write_cmd(uint8_t cmd) {
 }
 
 static esp_err_t ssd1306_flush(void) {
+  esp_err_t err;
   for (int page = 0; page < SSD1306_PAGES; page++) {
     ssd1306_write_cmd(0xB0 + page);
     ssd1306_write_cmd(0x00);
@@ -103,8 +104,9 @@ static esp_err_t ssd1306_flush(void) {
     i2c_master_write_byte(handle, 0x40, true);
     i2c_master_write(handle, &s_framebuffer[page * SSD1306_WIDTH], SSD1306_WIDTH, true);
     i2c_master_stop(handle);
-    i2c_master_cmd_begin(I2C_MASTER_PORT, handle, pdMS_TO_TICKS(100));
+    err = i2c_master_cmd_begin(I2C_MASTER_PORT, handle, pdMS_TO_TICKS(100));
     i2c_cmd_link_delete(handle);
+    if (err != ESP_OK) return err;
   }
   return ESP_OK;
 }
@@ -130,22 +132,25 @@ static void draw_text(int x, int y, const char *text) {
 esp_err_t lcd_display_init(void) {
   memset(s_framebuffer, 0, sizeof(s_framebuffer));
 
-  ssd1306_write_cmd(0xAE); // Display off
-  ssd1306_write_cmd(0xD5); ssd1306_write_cmd(0x80); // Set osc
-  ssd1306_write_cmd(0xA8); ssd1306_write_cmd(0x3F); // Mux ratio
-  ssd1306_write_cmd(0xD3); ssd1306_write_cmd(0x00); // Offset
-  ssd1306_write_cmd(0x40); // Start line
-  ssd1306_write_cmd(0x8D); ssd1306_write_cmd(0x14); // Charge pump
-  ssd1306_write_cmd(0x20); ssd1306_write_cmd(0x00); // Horiz addr mode
-  ssd1306_write_cmd(0xA1); // Segment remap
-  ssd1306_write_cmd(0xC8); // COM scan dir
-  ssd1306_write_cmd(0xDA); ssd1306_write_cmd(0x12); // COM pins
-  ssd1306_write_cmd(0x81); ssd1306_write_cmd(0xCF); // Contrast
-  ssd1306_write_cmd(0xD9); ssd1306_write_cmd(0xF1); // Pre-charge
-  ssd1306_write_cmd(0xDB); ssd1306_write_cmd(0x40); // VCOMH
-  ssd1306_write_cmd(0xA4); // Resume display
-  ssd1306_write_cmd(0xA6); // Normal (non-inverted)
-  ssd1306_write_cmd(0xAF); // Display on
+  if (ssd1306_write_cmd(0xAE) != ESP_OK) {  // Display off
+    ESP_LOGE(TAG, "SSD1306 not responding");
+    return ESP_FAIL;
+  }
+  ssd1306_write_cmd(0xD5); ssd1306_write_cmd(0x80);
+  ssd1306_write_cmd(0xA8); ssd1306_write_cmd(0x3F);
+  ssd1306_write_cmd(0xD3); ssd1306_write_cmd(0x00);
+  ssd1306_write_cmd(0x40);
+  ssd1306_write_cmd(0x8D); ssd1306_write_cmd(0x14);
+  ssd1306_write_cmd(0x20); ssd1306_write_cmd(0x00);
+  ssd1306_write_cmd(0xA1);
+  ssd1306_write_cmd(0xC8);
+  ssd1306_write_cmd(0xDA); ssd1306_write_cmd(0x12);
+  ssd1306_write_cmd(0x81); ssd1306_write_cmd(0xCF);
+  ssd1306_write_cmd(0xD9); ssd1306_write_cmd(0xF1);
+  ssd1306_write_cmd(0xDB); ssd1306_write_cmd(0x40);
+  ssd1306_write_cmd(0xA4);
+  ssd1306_write_cmd(0xA6);
+  ssd1306_write_cmd(0xAF);
 
   s_initialized = true;
 

@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include <sys/stat.h>
 
 static const char *TAG = "SD_LOGGER";
 static bool s_mounted = false;

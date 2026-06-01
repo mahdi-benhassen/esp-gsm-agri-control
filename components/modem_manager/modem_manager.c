@@ -19,6 +19,11 @@ static int s_last_rssi = -1;
 static SemaphoreHandle_t s_mutex = NULL;
 
 static void modem_power_on(void) {
+  if (CONFIG_MODEM_POWER_PIN < 0) {
+    ESP_LOGI(TAG, "No PWRKEY pin configured, skipping power pulse.");
+    return;
+  }
+
   ESP_LOGI(TAG, "Power pulsing modem (PWRKEY GPIO %d)...",
            CONFIG_MODEM_POWER_PIN);
   gpio_config_t io_conf = {
@@ -30,7 +35,6 @@ static void modem_power_on(void) {
   };
   gpio_config(&io_conf);
 
-  // Hold low to power on
   gpio_set_level(CONFIG_MODEM_POWER_PIN, 0);
   vTaskDelay(pdMS_TO_TICKS(CONFIG_MODEM_POWER_ON_PULSE_MS));
   gpio_set_level(CONFIG_MODEM_POWER_PIN, 1);
@@ -164,13 +168,12 @@ esp_err_t modem_manager_reconnect(void) {
   ESP_LOGW(TAG, "Modem reconnection requested...");
   xSemaphoreTake(s_mutex, portMAX_DELAY);
   s_connected = false;
+  xSemaphoreGive(s_mutex);
 
   if (s_dce) {
     esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
-    // Soft reset
     esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
   }
-  xSemaphoreGive(s_mutex);
   return ESP_OK;
 }
 
