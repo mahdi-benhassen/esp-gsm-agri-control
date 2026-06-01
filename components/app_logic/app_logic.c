@@ -13,6 +13,7 @@
 #include "rtc_manager.h"
 #include "sensor_hub.h"
 #include "system_monitor.h"
+#include "web_server.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,8 +131,21 @@ static void app_logic_task(void *pvParameters) {
                relay_get(RELAY_CH_2) ? "ON " : "OFF");
 
       int rssi = modem_manager_get_rssi();
-      snprintf(line3, sizeof(line3), "4G:%ddBm MQTT:%s",
-               rssi, mqtt_wrapper_is_connected() ? "OK" : "NO");
+
+      char wifi_ip[16] = "";
+      web_server_wifi_get_ip(wifi_ip, sizeof(wifi_ip));
+      if (wifi_ip[0] && strcmp(wifi_ip, "0.0.0.0") != 0) {
+        snprintf(line2, sizeof(line2), "WiFi: %s", wifi_ip);
+        snprintf(line3, sizeof(line3), "R1:%s R2:%s 4G:%ddBm",
+                 relay_get(RELAY_CH_1) ? "ON " : "OFF",
+                 relay_get(RELAY_CH_2) ? "ON " : "OFF", rssi);
+      } else {
+        snprintf(line2, sizeof(line2), "R1:%s R2:%s",
+                 relay_get(RELAY_CH_1) ? "ON " : "OFF",
+                 relay_get(RELAY_CH_2) ? "ON " : "OFF");
+        snprintf(line3, sizeof(line3), "4G:%ddBm MQTT:%s",
+                 rssi, mqtt_wrapper_is_connected() ? "OK" : "NO");
+      }
 
       lcd_display_show(line1, line2, line3);
       last_lcd_update = now;

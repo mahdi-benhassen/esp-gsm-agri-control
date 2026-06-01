@@ -19,6 +19,7 @@
 #include "sd_card_logger.h"
 #include "sensor_hub.h"
 #include "system_monitor.h"
+#include "web_server.h"
 
 static const char *TAG = "MAIN";
 
@@ -138,6 +139,14 @@ void app_main(void) {
 
   // 16. Start app logic
   ESP_ERROR_CHECK(app_logic_start());
+
+  // 17. Start web server (WiFi AP+STA + HTTP REST API + Web GUI)
+#if CONFIG_WEB_SERVER_ENABLED
+  err = web_server_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Web server init failed: %s", esp_err_to_name(err));
+  }
+#endif
 
   ESP_LOGI(TAG, "System initialization complete.");
 }

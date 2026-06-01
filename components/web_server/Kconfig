@@ -1,0 +1,21 @@
+menu "Web Server Configuration"
+
+    config WEB_SERVER_ENABLED
+        bool "Enable Web Server"
+        default y
+        help
+            Enable embedded HTTP web server and WiFi manager.
+
+    config WEB_SERVER_PORT
+        int "Web Server HTTP Port"
+        default 80
+
+    config WEB_SERVER_WIFI_AP_SSID
+        string "WiFi AP SSID (setup mode)"
+        default "KC868-A2v3-Setup"
+
+    config WEB_SERVER_WIFI_AP_PASSWORD
+        string "WiFi AP Password (setup mode, min 8 chars)"
+        default "admin1234"
+
+endmenu
