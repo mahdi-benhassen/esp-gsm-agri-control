@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include <stdbool.h>
 
 esp_err_t web_server_init(void);
 esp_err_t web_server_wifi_connect(const char *ssid, const char *password);
