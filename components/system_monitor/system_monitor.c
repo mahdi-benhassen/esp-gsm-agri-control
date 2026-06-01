@@ -8,6 +8,7 @@
 #include "modem_manager.h"
 #include "mqtt_client_wrapper.h"
 #include "rtc_manager.h"
+#include "sd_card_logger.h"
 
 static const char *TAG = "SYSTEM_MONITOR";
 static int64_t s_boot_time = 0;
