@@ -114,7 +114,7 @@ esp_err_t command_handler_process(const char *json_cmd, int len) {
     }
   } else if (strcmp(cmd, "get_time") == 0) {
     struct tm now;
-    char timestr[32];
+    char timestr[64];
     if (rtc_manager_get_time(&now) == ESP_OK) {
       snprintf(timestr, sizeof(timestr),
                "%04d-%02d-%02d %02d:%02d:%02d",
