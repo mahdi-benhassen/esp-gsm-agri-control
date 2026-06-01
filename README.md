@@ -53,6 +53,9 @@ A modular, event-driven firmware architecture built natively on **ESP-IDF v5.x**
 - **Persistent Configuration** — NVS flash storage with runtime validation; configurable over MQTT without reflash.
 - **RTC-Backed Timestamps** — DS3231 for accurate time in logs, LCD display, and MQTT payloads.
 - **Local LCD Display** — SSD1306 OLED shows relay states, 4G signal strength (dBm), and MQTT connection status.
+- **Web GUI Dashboard** — Responsive single-page web app served from the ESP32. Tabs for relays, inputs, sensors, WiFi config, system configuration, automations, and event log.
+- **WiFi Manager** — Dual mode (AP + STA). Access point for initial setup, connects to your router with saved credentials.
+- **REST API** — JSON endpoints at `/api/status`, `/api/relays`, `/api/inputs`, `/api/sensors`, `/api/wifi`, `/api/config`.
 - **SD Card Logging** — timestamped log entries written to microSD (FATFS).
 - **RS485 Modbus** — half-duplex UART with Modbus RTU CRC16 frame builder (9600 baud default).
 - **Digital Inputs** — 2 isolated dry-contact inputs with configurable debounce and per-channel inversion.
@@ -81,6 +84,7 @@ components/
   sd_card_logger/            # SPI SD card — FATFS mount, timestamped log writes
   sensor_hub/                # Periodic DS18B20 reading task + event posting
   system_monitor/            # Health diagnostics (heap, uptime, RSSI, SD status)
+  web_server/                # HTTP server + WiFi manager + embedded web GUI
 ```
 
 ---
@@ -125,6 +129,47 @@ Navigate to `Component config` to adjust:
 - `System Monitor Configuration` — report interval, low-heap threshold
 - `Application Logic Configuration` — task stack, priority, status publish interval
 - `KC868-A2v3 Smart Controller Configuration` — firmware version, free GPIO enable
+
+---
+
+## Web GUI
+
+The ESP32 serves a responsive single-page web application accessible via WiFi. Open a browser to the device IP address (shown on the LCD display or serial console).
+
+### WiFi Setup
+
+1. Power on the board — it creates an access point: **`KC868-A2v3-Setup`** (password: `admin1234`)
+2. Connect your phone/laptop to this AP
+3. Open `http://192.168.4.1` in a browser
+4. Go to the **WiFi** tab, enter your router SSID and password, click **Connect**
+5. The board joins your network; find its new IP on the LCD or serial log
+
+### Web API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | GET | Web dashboard (HTML) |
+| `/api/status` | GET | System status JSON (uptime, heap, RSSI, WiFi, SD, RTC) |
+| `/api/relays` | GET | Relay states `[true, false]` |
+| `/api/relays` | POST | Set relay: `{"channel":0,"state":true}` / timed / all_off |
+| `/api/inputs` | GET | Digital input states |
+| `/api/sensors` | GET | Temperature readings (T1, T2) |
+| `/api/wifi` | GET | WiFi mode, IP, SSID |
+| `/api/wifi` | POST | Connect: `{"ssid":"MyRouter","password":"mypass"}` or `{"disconnect":true}` |
+| `/api/config` | GET | Device configuration |
+| `/api/config` | POST | Update config (auto-saves to NVS flash) |
+| `/api/reboot` | POST | Reboot device |
+
+### Dashboard Tabs
+
+- **Dashboard** — system overview, relay states, inputs, sensor readings
+- **Relays** — toggle relays ON/OFF, timed activation
+- **Inputs** — live digital input states
+- **Sensors** — DS18B20 temperature readings
+- **WiFi** — connect to router, view connection status
+- **Config** — device name, MQTT broker, intervals, inversion, LCD/SD toggles, reboot
+- **Automations** — simple IF-THEN rules (e.g., Input 1 ON → Relay 1 ON for 10s)
+- **Log** — event log (relay changes, config saves, WiFi events)
 
 ---
 
