@@ -80,7 +80,7 @@ esp_err_t sd_card_logger_write(const char *line) {
   }
 
   struct tm now;
-  char ts[32] = "";
+  char ts[64] = "";
   if (rtc_manager_get_time(&now) == ESP_OK) {
     snprintf(ts, sizeof(ts), "[%04d-%02d-%02d %02d:%02d:%02d] ",
              now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
