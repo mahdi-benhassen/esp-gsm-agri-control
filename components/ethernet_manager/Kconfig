@@ -1,0 +1,31 @@
+menu "Ethernet W5500 Configuration"
+
+    config ETH_SPI_MOSI
+        int "W5500 SPI MOSI GPIO"
+        default 43
+
+    config ETH_SPI_MISO
+        int "W5500 SPI MISO GPIO"
+        default 44
+
+    config ETH_SPI_SCK
+        int "W5500 SPI SCK GPIO"
+        default 42
+
+    config ETH_SPI_CS
+        int "W5500 SPI CS GPIO"
+        default 41
+
+    config ETH_INT_GPIO
+        int "W5500 Interrupt GPIO"
+        default 2
+
+    config ETH_RST_GPIO
+        int "W5500 Reset GPIO"
+        default 1
+
+    config ETH_POLL_PERIOD_MS
+        int "W5500 Poll Period (ms)"
+        default 50
+
+endmenu

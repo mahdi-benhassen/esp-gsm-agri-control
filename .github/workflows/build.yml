@@ -1,15 +1,15 @@
-name: Build ESP32 Firmware
+name: Build ESP32-S3 Firmware
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, esp-gsm-smart-control_a2v3 ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, esp-gsm-smart-control_a2v3 ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,5 +20,5 @@ jobs:
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.2
-          target: esp32
+          target: esp32s3
           path: '.'

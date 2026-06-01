@@ -2,57 +2,41 @@ menu "Modem Manager Configuration"
 
     config MODEM_UART_TX_PIN
         int "Modem UART TX GPIO"
-        default 17
+        default 10
         help
-            ESP32 GPIO pin connected to Modem RX pin.
+            GPIO pin connected to Modem RX. KC868-A2v3: GPIO10.
 
     config MODEM_UART_RX_PIN
         int "Modem UART RX GPIO"
-        default 16
+        default 9
         help
-            ESP32 GPIO pin connected to Modem TX pin.
+            GPIO pin connected to Modem TX. KC868-A2v3: GPIO9.
 
     config MODEM_UART_RTS_PIN
         int "Modem UART RTS GPIO (-1 to disable)"
         default -1
-        help
-            GPIO for RTS pin, set to -1 to disable hardware flow control.
 
     config MODEM_UART_CTS_PIN
         int "Modem UART CTS GPIO (-1 to disable)"
         default -1
-        help
-            GPIO for CTS pin, set to -1 to disable hardware flow control.
 
     config MODEM_UART_BAUD_RATE
         int "Modem UART Baud Rate"
         default 115200
-        help
-            Baud rate for serial communication with modem.
 
     config MODEM_POWER_PIN
         int "Modem PWRKEY GPIO Pin"
-        default 4
+        default -1
         help
-            ESP32 GPIO pin connected to modem power key (PWRKEY) for power pulsing.
+            PWRKEY pin for power-cycling the modem. -1 to disable.
 
     config MODEM_POWER_ON_PULSE_MS
         int "Modem Power-On Pulse Duration (ms)"
         default 1000
-        help
-            Duration in milliseconds to hold the PWRKEY pin active to power up the modem.
 
     config MODEM_APN
         string "Cellular APN"
         default "internet"
-        help
-            Access Point Name for cellular data network (e.g. "internet", "mnet", etc.).
-
-    config MODEM_RECONNECT_INTERVAL_SEC
-        int "Modem Reconnect Loop Interval (sec)"
-        default 10
-        help
-            Time to check PPP state and attempt reconnection if lost.
 
     config MODEM_UART_RX_BUFFER_SIZE
         int "Modem UART RX Buffer Size"

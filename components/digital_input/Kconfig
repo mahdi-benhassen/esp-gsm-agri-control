@@ -1,0 +1,15 @@
+menu "Digital Input Configuration"
+
+    config DIGITAL_INPUT_1_GPIO
+        int "Digital Input 1 GPIO"
+        default 16
+        help
+            GPIO pin for digital input 1 (dry contact).
+
+    config DIGITAL_INPUT_2_GPIO
+        int "Digital Input 2 GPIO"
+        default 17
+        help
+            GPIO pin for digital input 2 (dry contact).
+
+endmenu

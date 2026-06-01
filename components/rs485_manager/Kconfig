@@ -1,0 +1,15 @@
+menu "RS485 Configuration"
+
+    config RS485_TXD
+        int "RS485 TXD GPIO"
+        default 7
+
+    config RS485_RXD
+        int "RS485 RXD GPIO"
+        default 15
+
+    config RS485_BAUD_RATE
+        int "RS485 Baud Rate"
+        default 9600
+
+endmenu

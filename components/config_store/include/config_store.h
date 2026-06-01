@@ -7,11 +7,14 @@
 typedef struct {
   uint32_t sensor_read_interval_sec;
   uint32_t mqtt_publish_interval_sec;
-  float soil_moisture_threshold;
-  bool auto_irrigation_enabled;
-  uint32_t irrigation_duration_sec;
   char mqtt_broker_uri[128];
   char device_name[32];
+  bool input_1_inverted;
+  bool input_2_inverted;
+  uint32_t input_debounce_ms;
+  bool relay_interlock_enabled;
+  bool lcd_enabled;
+  bool sd_log_enabled;
 } app_config_t;
 
 esp_err_t config_store_init(void);

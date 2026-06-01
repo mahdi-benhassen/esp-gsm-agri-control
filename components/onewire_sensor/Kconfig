@@ -1,0 +1,15 @@
+menu "1-Wire Sensor Configuration"
+
+    config ONEWIRE_TMP1_GPIO
+        int "1-Wire TMP1 GPIO Pin"
+        default 18
+        help
+            GPIO pin for DS18B20 temperature sensor 1.
+
+    config ONEWIRE_TMP2_GPIO
+        int "1-Wire TMP2 GPIO Pin"
+        default 8
+        help
+            GPIO pin for DS18B20 temperature sensor 2.
+
+endmenu

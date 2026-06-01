@@ -1,6 +1,6 @@
 idf_component_register(
-    SRCS "sensor_hub.c" "soil_moisture.c" "dht22.c"
+    SRCS "sensor_hub.c"
     INCLUDE_DIRS "include"
-    REQUIRES esp_adc esp_timer driver esp_event
-    PRIV_REQUIRES freertos config_store
+    REQUIRES esp_timer esp_event
+    PRIV_REQUIRES freertos config_store onewire_sensor
 )

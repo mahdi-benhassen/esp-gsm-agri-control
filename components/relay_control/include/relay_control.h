@@ -6,14 +6,11 @@
 #include <stdint.h>
 
 typedef enum {
-    RELAY_CH_PUMP_1 = 0,
-    RELAY_CH_PUMP_2,
-    RELAY_CH_VALVE_1,
-    RELAY_CH_VALVE_2,
+    RELAY_CH_1 = 0,
+    RELAY_CH_2,
     RELAY_CH_MAX
 } relay_channel_t;
 
-// Custom event base
 ESP_EVENT_DECLARE_BASE(RELAY_EVENTS);
 enum { RELAY_EVENT_STATE_CHANGED };
 

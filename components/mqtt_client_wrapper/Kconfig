@@ -3,14 +3,11 @@ menu "MQTT Client Configuration"
     config MQTT_BROKER_URI
         string "Default MQTT Broker URI"
         default "mqtt://broker.hivemq.com"
-        help
-            The default URI of the MQTT broker (e.g. mqtt://broker.hivemq.com:1883). 
-            Can be overridden in runtime via NVS configuration.
 
     config MQTT_DEVICE_ID_PREFIX
         string "MQTT Topic Path Prefix"
-        default "agri"
+        default "kca2v3"
         help
-            The prefix used in constructed topic paths, e.g. prefix/{device_id}/sensors.
+            Prefix used in topic paths: prefix/{device_id}/sensors.
 
 endmenu

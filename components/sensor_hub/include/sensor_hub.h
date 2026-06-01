@@ -6,14 +6,13 @@
 #include <stdint.h>
 
 typedef struct {
-    float soil_moisture_pct;   // 0-100%
-    float temperature_c;       // Celsius
-    float humidity_pct;        // 0-100%
-    bool  sensors_valid;       // All readings OK
-    int64_t timestamp_ms;      // esp_timer_get_time() / 1000
+  float temperature_c;
+  float humidity_pct;
+  float soil_moisture_pct;
+  bool sensors_valid;
+  int64_t timestamp_ms;
 } sensor_data_t;
 
-// Custom event declarations
 ESP_EVENT_DECLARE_BASE(SENSOR_EVENTS);
 enum { SENSOR_EVENT_NEW_DATA };
 

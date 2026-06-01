@@ -1,0 +1,15 @@
+menu "RTC Manager Configuration"
+
+    config RTC_I2C_SDA
+        int "I2C SDA GPIO"
+        default 48
+        help
+            I2C data pin. KC868-A2v3 default: GPIO48.
+
+    config RTC_I2C_SCL
+        int "I2C SCL GPIO"
+        default 47
+        help
+            I2C clock pin. KC868-A2v3 default: GPIO47.
+
+endmenu

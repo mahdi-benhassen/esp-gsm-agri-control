@@ -1,4 +1,4 @@
-menu "Agriculture Smart Control System Configuration"
+menu "KC868-A2v3 Smart Controller Configuration"
 
     config APP_VERSION
         string "Firmware Version"

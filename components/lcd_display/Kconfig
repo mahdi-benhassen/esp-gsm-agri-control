@@ -1,0 +1,15 @@
+menu "LCD Display Configuration"
+
+    config LCD_I2C_SDA
+        int "LCD I2C SDA GPIO"
+        default 48
+
+    config LCD_I2C_SCL
+        int "LCD I2C SCL GPIO"
+        default 47
+
+    config LCD_REFRESH_INTERVAL_SEC
+        int "LCD Refresh Interval (seconds)"
+        default 5
+
+endmenu
