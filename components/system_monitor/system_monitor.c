@@ -57,7 +57,7 @@ esp_err_t system_monitor_get_status(system_status_t *status) {
   status->mqtt_connected = mqtt_wrapper_is_connected();
   status->modem_connected = modem_manager_is_connected();
   status->eth_connected = false;
-  status->sd_mounted = false;
+  status->sd_mounted = sd_card_is_mounted();
   status->rtc_temp = rtc_manager_get_temperature();
   return ESP_OK;
 }

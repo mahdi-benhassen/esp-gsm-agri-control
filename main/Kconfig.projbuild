@@ -6,4 +6,11 @@ menu "KC868-A2v3 Smart Controller Configuration"
         help
             Version string of the firmware application.
 
+    config FREEGPIO_ENABLE
+        bool "Initialize Free GPIOs as Inputs"
+        default y
+        help
+            Configure free GPIOs (4, 5, 6, 38) as inputs with pull-up.
+            Disable if you plan to use them directly in custom code.
+
 endmenu

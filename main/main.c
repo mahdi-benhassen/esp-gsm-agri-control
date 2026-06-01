@@ -1,6 +1,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -13,7 +14,9 @@
 #include "modem_manager.h"
 #include "mqtt_client_wrapper.h"
 #include "relay_control.h"
+#include "rs485_manager.h"
 #include "rtc_manager.h"
+#include "sd_card_logger.h"
 #include "sensor_hub.h"
 #include "system_monitor.h"
 
@@ -65,7 +68,22 @@ void app_main(void) {
     ESP_LOGW(TAG, "Digital input init failed: %s", esp_err_to_name(err));
   }
 
-  // 9. Initialize sensor hub (1-wire DS18B20)
+  // 9. Configure free GPIOs as inputs
+#if CONFIG_FREEGPIO_ENABLE
+  {
+    gpio_config_t free_io = {
+        .pin_bit_mask = (1ULL << 4) | (1ULL << 5) | (1ULL << 6) | (1ULL << 38),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&free_io);
+    ESP_LOGI(TAG, "Free GPIOs (4, 5, 6, 38) configured as inputs");
+  }
+#endif
+
+  // 10. Initialize sensor hub (1-wire DS18B20)
   err = sensor_hub_init();
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "Sensor hub init failed: %s", esp_err_to_name(err));
@@ -77,7 +95,19 @@ void app_main(void) {
     ESP_LOGE(TAG, "Modem init failed: %s", esp_err_to_name(err));
   }
 
-  // 11. Initialize system monitor
+  // 11. Initialize RS485
+  err = rs485_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "RS485 init failed: %s", esp_err_to_name(err));
+  }
+
+  // 12. Initialize SD card logger
+  err = sd_card_logger_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "SD card init failed: %s", esp_err_to_name(err));
+  }
+
+  // 13. Initialize system monitor
   ESP_ERROR_CHECK(system_monitor_init());
 
   ESP_LOGI(TAG, "Waiting for cellular network connection...");
@@ -97,16 +127,16 @@ void app_main(void) {
              wait_sec);
   }
 
-  // 12. Initialize command handler
+  // 14. Initialize command handler
   ESP_ERROR_CHECK(command_handler_init());
 
-  // 13. Initialize MQTT client
+  // 15. Initialize MQTT client
   err = mqtt_wrapper_init();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "MQTT init failed: %s", esp_err_to_name(err));
   }
 
-  // 14. Start app logic
+  // 16. Start app logic
   ESP_ERROR_CHECK(app_logic_start());
 
   ESP_LOGI(TAG, "System initialization complete.");

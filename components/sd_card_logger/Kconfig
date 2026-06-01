@@ -16,4 +16,10 @@ menu "SD Card Logger Configuration"
         int "SD Card SPI CS GPIO"
         default 11
 
+    config SD_SPI_CD
+        int "SD Card Card Detect GPIO (-1 to disable)"
+        default 21
+        help
+            Card detect pin. KC868-A2v3: GPIO21. Set to -1 if not used.
+
 endmenu
