@@ -4,6 +4,8 @@
 #include "driver/sdspi_host.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "rtc_manager.h"
 #include "sdmmc_cmd.h"
 #include <stdio.h>
@@ -14,6 +16,7 @@ static const char *TAG = "SD_LOGGER";
 static bool s_mounted = false;
 static char s_log_path[64] = "/sdcard/log.txt";
 static FILE *s_log_file = NULL;
+static SemaphoreHandle_t s_mutex = NULL;
 
 esp_err_t sd_card_logger_init(void) {
   esp_err_t err;
@@ -57,6 +60,11 @@ esp_err_t sd_card_logger_init(void) {
 
   sdmmc_card_print_info(stdout, card);
   s_mounted = true;
+  s_mutex = xSemaphoreCreateMutex();
+  if (s_mutex == NULL) {
+    ESP_LOGE(TAG, "Failed to create mutex");
+    return ESP_ERR_NO_MEM;
+  }
 
   struct tm now;
   if (rtc_manager_get_time(&now) == ESP_OK) {
@@ -71,9 +79,12 @@ esp_err_t sd_card_logger_init(void) {
 
 esp_err_t sd_card_logger_write(const char *line) {
   if (!s_mounted || line == NULL) return ESP_ERR_INVALID_STATE;
+  if (s_mutex == NULL) return ESP_ERR_INVALID_STATE;
 
-  s_log_file = fopen(s_log_path, "a");
-  if (s_log_file == NULL) {
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  FILE *f = fopen(s_log_path, "a");
+  if (f == NULL) {
+    xSemaphoreGive(s_mutex);
     ESP_LOGE(TAG, "Failed to open log file");
     return ESP_FAIL;
   }
@@ -86,9 +97,9 @@ esp_err_t sd_card_logger_write(const char *line) {
              now.tm_hour, now.tm_min, now.tm_sec);
   }
 
-  fprintf(s_log_file, "%s%s\n", ts, line);
-  fclose(s_log_file);
-  s_log_file = NULL;
+  fprintf(f, "%s%s\n", ts, line);
+  fclose(f);
+  xSemaphoreGive(s_mutex);
   return ESP_OK;
 }
 

@@ -168,12 +168,11 @@ esp_err_t modem_manager_reconnect(void) {
   ESP_LOGW(TAG, "Modem reconnection requested...");
   xSemaphoreTake(s_mutex, portMAX_DELAY);
   s_connected = false;
-  xSemaphoreGive(s_mutex);
-
   if (s_dce) {
     esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
     esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
   }
+  xSemaphoreGive(s_mutex);
   return ESP_OK;
 }
 

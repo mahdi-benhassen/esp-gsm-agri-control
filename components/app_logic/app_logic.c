@@ -75,20 +75,20 @@ static void app_logic_task(void *pvParameters) {
   uint32_t last_sensor_pub = 0;
   uint32_t last_status_pub = 0;
   uint32_t last_lcd_update = 0;
-  uint32_t last_input_scan = 0;
+  uint32_t last_input_scan_ms = 0;
 
   while (1) {
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000000ULL);
     app_config_t cfg;
     config_store_get_snapshot(&cfg);
 
-    // Scan digital inputs
-    if (cfg.input_debounce_ms > 0 &&
-        (now - last_input_scan) >= (cfg.input_debounce_ms / 1000 + 1)) {
+    // Scan digital inputs every 20 ms for proper debounce
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+    if ((now_ms - last_input_scan_ms) >= 20) {
       for (int i = 0; i < 2; i++) {
         digital_input_get(i);
       }
-      last_input_scan = now;
+      last_input_scan_ms = now_ms;
     }
 
     // Publish sensor data

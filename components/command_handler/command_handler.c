@@ -129,8 +129,8 @@ esp_err_t command_handler_process(const char *json_cmd, int len) {
     cJSON *ts = cJSON_GetObjectItem(root, "timestamp");
     if (ts && cJSON_IsNumber(ts) && ts->valuedouble > 0) {
       time_t t = (time_t)ts->valuedouble;
-      struct tm *now = gmtime(&t);
-      if (now && rtc_manager_set_time(now) == ESP_OK) {
+      struct tm now = {0};
+      if (gmtime_r(&t, &now) != NULL && rtc_manager_set_time(&now) == ESP_OK) {
         send_response(cmd, "ok", "RTC time updated");
       } else {
         send_response(cmd, "error", "RTC set failed");

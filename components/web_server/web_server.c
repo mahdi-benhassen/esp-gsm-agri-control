@@ -125,9 +125,9 @@ bool web_server_wifi_is_connected(void) {
 }
 
 esp_err_t web_server_wifi_get_ip(char *buf, size_t len) {
-  if (buf == NULL) return ESP_ERR_INVALID_ARG;
+  if (buf == NULL || len == 0) return ESP_ERR_INVALID_ARG;
   xSemaphoreTake(s_wifi_mutex, portMAX_DELAY);
-  strncpy(buf, s_wifi_ip, len);
+  snprintf(buf, len, "%s", s_wifi_ip);
   xSemaphoreGive(s_wifi_mutex);
   return ESP_OK;
 }
@@ -182,30 +182,45 @@ static esp_err_t post_relays(httpd_req_t *req) {
 
   if (strstr(content, "\"all_off\"")) {
     relay_all_off();
-    send_json(req, "{\"ok\":true,\"message\":\"All relays OFF\"}");
-    return ESP_OK;
+    return send_json(req, "{\"ok\":true,\"message\":\"All relays OFF\"}");
   }
 
   int ch = -1, state = -1, duration = -1;
-  char *p = strstr(content, "\"channel\""); if (p) ch = atoi(strchr(p, ':') + 1);
-  p = strstr(content, "\"state\""); if (p) state = strstr(p, "true") == p + 8 ? 1 : 0;
-  p = strstr(content, "\"duration\""); if (p) duration = atoi(strchr(p, ':') + 1);
+  char *p = strstr(content, "\"channel\"");
+  if (p) {
+      char *colon = strchr(p, ':');
+      if (colon) ch = atoi(colon + 1);
+  }
+  p = strstr(content, "\"state\"");
+  if (p) {
+      char *colon = strchr(p, ':');
+      if (colon) {
+          colon++;
+          while (*colon == ' ' || *colon == '\t') colon++;
+          if (strncmp(colon, "true", 4) == 0) state = 1;
+          else if (strncmp(colon, "false", 5) == 0) state = 0;
+      }
+  }
+  p = strstr(content, "\"duration\"");
+  if (p) {
+      char *colon = strchr(p, ':');
+      if (colon) duration = atoi(colon + 1);
+  }
 
   if (ch >= 0 && ch < RELAY_CH_MAX) {
     if (duration > 0) {
       relay_set_timed((relay_channel_t)ch, (uint32_t)duration);
       char rsp[64];
       snprintf(rsp, sizeof(rsp), "{\"ok\":true,\"message\":\"Relay %d ON for %ds\"}", ch + 1, duration);
-      send_json(req, rsp);
+      return send_json(req, rsp);
     } else if (state >= 0) {
       relay_set((relay_channel_t)ch, (bool)state);
       char rsp[64];
       snprintf(rsp, sizeof(rsp), "{\"ok\":true,\"message\":\"Relay %d %s\"}", ch + 1, state ? "ON" : "OFF");
-      send_json(req, rsp);
+      return send_json(req, rsp);
     }
   }
-  send_json(req, "{\"ok\":false,\"message\":\"Invalid params\"}");
-  return ESP_OK;
+  return send_json(req, "{\"ok\":false,\"message\":\"Invalid params\"}");
 }
 
 static esp_err_t get_inputs(httpd_req_t *req) {
@@ -259,8 +274,36 @@ static esp_err_t post_wifi(httpd_req_t *req) {
   }
 
   char ssid[33] = {0}, pass[65] = {0};
-  char *p = strstr(content, "\"ssid\""); if (p) { p = strchr(p, ':') + 2; char *e = strchr(p, '"'); if (e) { size_t len = e - p; if (len < 33) { memcpy(ssid, p, len); } } }
-  p = strstr(content, "\"password\""); if (p) { p = strchr(p, ':') + 2; char *e = strchr(p, '"'); if (e) { size_t len = e - p; if (len < 65) { memcpy(pass, p, len); } } }
+  char *p = strstr(content, "\"ssid\"");
+  if (p) {
+      char *colon = strchr(p, ':');
+      if (colon) {
+          char *start = strchr(colon, '"');
+          if (start) {
+              start++;
+              char *end = strchr(start, '"');
+              if (end) {
+                  size_t len = end - start;
+                  if (len < sizeof(ssid)) memcpy(ssid, start, len);
+              }
+          }
+      }
+  }
+  p = strstr(content, "\"password\"");
+  if (p) {
+      char *colon = strchr(p, ':');
+      if (colon) {
+          char *start = strchr(colon, '"');
+          if (start) {
+              start++;
+              char *end = strchr(start, '"');
+              if (end) {
+                  size_t len = end - start;
+                  if (len < sizeof(pass)) memcpy(pass, start, len);
+              }
+          }
+      }
+  }
 
   if (ssid[0]) {
     web_server_wifi_connect(ssid, pass);

@@ -106,8 +106,11 @@ esp_err_t relay_set(relay_channel_t ch, bool on) {
   ESP_LOGI(TAG, "Relay %d set to %s", ch, on ? "ON" : "OFF");
 
   relay_event_data_t event_data = {.channel = ch, .state = on};
-  esp_event_post(RELAY_EVENTS, RELAY_EVENT_STATE_CHANGED, &event_data,
+  esp_err_t post_err = esp_event_post(RELAY_EVENTS, RELAY_EVENT_STATE_CHANGED, &event_data,
                  sizeof(event_data), pdMS_TO_TICKS(100));
+  if (post_err != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to post relay event: %s", esp_err_to_name(post_err));
+  }
 
   return ESP_OK;
 }
@@ -164,8 +167,11 @@ esp_err_t relay_set_timed(relay_channel_t ch, uint32_t duration_sec) {
            (unsigned long)duration_sec);
 
   relay_event_data_t event_data = {.channel = ch, .state = true};
-  esp_event_post(RELAY_EVENTS, RELAY_EVENT_STATE_CHANGED, &event_data,
+  esp_err_t post_err = esp_event_post(RELAY_EVENTS, RELAY_EVENT_STATE_CHANGED, &event_data,
                  sizeof(event_data), pdMS_TO_TICKS(100));
+  if (post_err != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to post relay event: %s", esp_err_to_name(post_err));
+  }
 
   return ESP_OK;
 }
@@ -182,8 +188,11 @@ esp_err_t relay_all_off(void) {
 
   for (int i = 0; i < RELAY_CH_MAX; i++) {
     relay_event_data_t event_data = {.channel = i, .state = false};
-    esp_event_post(RELAY_EVENTS, RELAY_EVENT_STATE_CHANGED, &event_data,
+    esp_err_t post_err = esp_event_post(RELAY_EVENTS, RELAY_EVENT_STATE_CHANGED, &event_data,
                    sizeof(event_data), pdMS_TO_TICKS(100));
+    if (post_err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to post relay event: %s", esp_err_to_name(post_err));
+    }
   }
   return ESP_OK;
 }

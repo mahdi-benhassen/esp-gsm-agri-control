@@ -181,10 +181,8 @@ esp_err_t config_store_save(const app_config_t *cfg) {
 }
 
 const app_config_t *config_store_get(void) {
-  static app_config_t snapshot;
-  if (config_store_get_snapshot(&snapshot) != ESP_OK)
-    return NULL;
-  return &snapshot;
+  ESP_LOGW(TAG, "config_store_get() is deprecated and unsafe; use config_store_get_snapshot()");
+  return NULL;
 }
 
 esp_err_t config_store_get_snapshot(app_config_t *cfg) {

@@ -7,7 +7,10 @@
 
 static const char *TAG = "ONEWIRE";
 
+static portMUX_TYPE s_onewire_spinlock = portMUX_INITIALIZER_UNLOCKED;
+
 static bool onewire_reset(int pin) {
+  portENTER_CRITICAL(&s_onewire_spinlock);
   gpio_set_direction(pin, GPIO_MODE_OUTPUT_OD);
   gpio_set_level(pin, 0);
   esp_rom_delay_us(480);
@@ -17,18 +20,22 @@ static bool onewire_reset(int pin) {
 
   bool presence = (gpio_get_level(pin) == 0);
   esp_rom_delay_us(410);
+  portEXIT_CRITICAL(&s_onewire_spinlock);
   return presence;
 }
 
 static void onewire_write_bit(int pin, int bit) {
+  portENTER_CRITICAL(&s_onewire_spinlock);
   gpio_set_direction(pin, GPIO_MODE_OUTPUT_OD);
   gpio_set_level(pin, 0);
   esp_rom_delay_us(bit ? 2 : 60);
   gpio_set_level(pin, 1);
   esp_rom_delay_us(bit ? 58 : 2);
+  portEXIT_CRITICAL(&s_onewire_spinlock);
 }
 
 static int onewire_read_bit(int pin) {
+  portENTER_CRITICAL(&s_onewire_spinlock);
   gpio_set_direction(pin, GPIO_MODE_OUTPUT_OD);
   gpio_set_level(pin, 0);
   esp_rom_delay_us(2);
@@ -36,6 +43,7 @@ static int onewire_read_bit(int pin) {
   esp_rom_delay_us(8);
   int bit = gpio_get_level(pin);
   esp_rom_delay_us(50);
+  portEXIT_CRITICAL(&s_onewire_spinlock);
   return bit;
 }
 
