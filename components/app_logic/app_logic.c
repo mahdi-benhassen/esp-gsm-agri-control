@@ -55,7 +55,7 @@ static void on_mqtt_connected(void *arg, esp_event_base_t base,
   for (int i = 0; i < RELAY_CH_MAX; i++) {
     mqtt_wrapper_publish_relay_state(i, relay_get(i));
   }
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < 4; i++) {
     mqtt_wrapper_publish_input_state(i, digital_input_get(i));
   }
 
@@ -85,7 +85,7 @@ static void app_logic_task(void *pvParameters) {
     // Scan digital inputs every 20 ms for proper debounce
     uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
     if ((now_ms - last_input_scan_ms) >= 20) {
-      for (int i = 0; i < 2; i++) {
+      for (int i = 0; i < 4; i++) {
         digital_input_get(i);
       }
       last_input_scan_ms = now_ms;

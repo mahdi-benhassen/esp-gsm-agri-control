@@ -10,6 +10,8 @@
 #include "command_handler.h"
 #include "config_store.h"
 #include "digital_input.h"
+#include "analog_input.h"
+#include "eeprom_storage.h"
 #include "lcd_display.h"
 #include "modem_manager.h"
 #include "mqtt_client_wrapper.h"
@@ -69,46 +71,58 @@ void app_main(void) {
     ESP_LOGW(TAG, "Digital input init failed: %s", esp_err_to_name(err));
   }
 
-  // 9. Configure free GPIOs as inputs
+  // 9. Initialize analog inputs (ADC)
+  err = analog_input_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Analog input init failed: %s", esp_err_to_name(err));
+  }
+
+  // 10. Initialize EEPROM (24C02 on I2C bus)
+  err = eeprom_storage_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "EEPROM init failed: %s", esp_err_to_name(err));
+  }
+
+  // 11. Configure remaining free GPIOs as inputs
 #if CONFIG_FREEGPIO_ENABLE
   {
     gpio_config_t free_io = {
-        .pin_bit_mask = (1ULL << 4) | (1ULL << 5) | (1ULL << 6) | (1ULL << 38),
+        .pin_bit_mask = (1ULL << 6) | (1ULL << 38),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&free_io);
-    ESP_LOGI(TAG, "Free GPIOs (4, 5, 6, 38) configured as inputs");
+    ESP_LOGI(TAG, "Free GPIOs (6, 38) configured as inputs");
   }
 #endif
 
-  // 10. Initialize sensor hub (1-wire DS18B20)
+  // 12. Initialize sensor hub (1-wire DS18B20)
   err = sensor_hub_init();
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "Sensor hub init failed: %s", esp_err_to_name(err));
   }
 
-  // 10. Initialize GSM/4G modem
+  // 13. Initialize GSM/4G modem
   err = modem_manager_init();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Modem init failed: %s", esp_err_to_name(err));
   }
 
-  // 11. Initialize RS485
+  // 14. Initialize RS485
   err = rs485_init();
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "RS485 init failed: %s", esp_err_to_name(err));
   }
 
-  // 12. Initialize SD card logger
+  // 15. Initialize SD card logger
   err = sd_card_logger_init();
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "SD card init failed: %s", esp_err_to_name(err));
   }
 
-  // 13. Initialize system monitor
+  // 16. Initialize system monitor
   ESP_ERROR_CHECK(system_monitor_init());
 
   ESP_LOGI(TAG, "Waiting for cellular network connection...");
@@ -128,19 +142,19 @@ void app_main(void) {
              wait_sec);
   }
 
-  // 14. Initialize command handler
+  // 17. Initialize command handler
   ESP_ERROR_CHECK(command_handler_init());
 
-  // 15. Initialize MQTT client
+  // 18. Initialize MQTT client
   err = mqtt_wrapper_init();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "MQTT init failed: %s", esp_err_to_name(err));
   }
 
-  // 16. Start app logic
+  // 19. Start app logic
   ESP_ERROR_CHECK(app_logic_start());
 
-  // 17. Start web server (WiFi AP+STA + HTTP REST API + Web GUI)
+  // 20. Start web server (WiFi AP+STA + HTTP REST API + Web GUI)
 #if CONFIG_WEB_SERVER_ENABLED
   err = web_server_init();
   if (err != ESP_OK) {

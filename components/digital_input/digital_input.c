@@ -11,10 +11,12 @@ static const char *TAG = "DIGITAL_INPUT";
 
 ESP_EVENT_DEFINE_BASE(DIGITAL_INPUT_EVENTS);
 
-#define INPUT_COUNT 2
+#define INPUT_COUNT 4
 static const gpio_num_t s_input_pins[INPUT_COUNT] = {
     CONFIG_DIGITAL_INPUT_1_GPIO,
     CONFIG_DIGITAL_INPUT_2_GPIO,
+    CONFIG_DIGITAL_INPUT_3_GPIO,
+    CONFIG_DIGITAL_INPUT_4_GPIO,
 };
 
 static bool s_input_states[INPUT_COUNT] = {false};
@@ -53,8 +55,8 @@ esp_err_t digital_input_init(void) {
     s_deadline_ms[i] = 0;
   }
 
-  ESP_LOGI(TAG, "Digital inputs initialized (GPIO %d, %d)",
-           s_input_pins[0], s_input_pins[1]);
+  ESP_LOGI(TAG, "Digital inputs initialized (GPIO %d, %d, %d, %d)",
+           s_input_pins[0], s_input_pins[1], s_input_pins[2], s_input_pins[3]);
   return ESP_OK;
 }
 
@@ -67,7 +69,12 @@ bool digital_input_get(int channel) {
   bool inverted = false;
   uint32_t debounce_ms = 50;
   if (config_store_get_snapshot(&cfg) == ESP_OK) {
-    inverted = (channel == 0) ? cfg.input_1_inverted : cfg.input_2_inverted;
+    switch (channel) {
+      case 0: inverted = cfg.input_1_inverted; break;
+      case 1: inverted = cfg.input_2_inverted; break;
+      case 2: inverted = cfg.input_3_inverted; break;
+      case 3: inverted = cfg.input_4_inverted; break;
+    }
     debounce_ms = cfg.input_debounce_ms;
   }
 

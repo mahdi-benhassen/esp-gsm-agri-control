@@ -34,6 +34,19 @@ menu "Modem Manager Configuration"
         int "Modem Power-On Pulse Duration (ms)"
         default 1000
 
+    choice MODEM_TYPE
+        prompt "Modem Module Type"
+        default MODEM_TYPE_SIM7600
+        help
+            Select the cellular modem module connected to the board.
+
+        config MODEM_TYPE_SIM7600
+            bool "SIM7600 (4G LTE)"
+
+        config MODEM_TYPE_SIM800L
+            bool "SIM800L (2G GPRS)"
+    endchoice
+
     config MODEM_APN
         string "Cellular APN"
         default "internet"

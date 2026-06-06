@@ -22,7 +22,7 @@
 | Address | Device | Notes |
 |---|---|---|
 | 0x3C | SSD1306 OLED 128×64 | Status display |
-| 0x50 | 24C02 EEPROM 2Kbit | Config storage (not implemented in firmware) |
+| 0x50 | 24C02 EEPROM 2Kbit | Config storage backup, page-write safe driver |
 | 0x68 | DS3231 RTC | Battery-backed (CR1220) |
 
 ### Relays (250V / 10A COM, NO, NC)
@@ -38,6 +38,8 @@
 |---|---|---|---|
 | Input 1 | GPIO16 | Internal | LOW = active (inverted by firmware) |
 | Input 2 | GPIO17 | Internal | LOW = active (inverted by firmware) |
+| Input 3 | GPIO35 | Internal | LOW = active (inverted by firmware) |
+| Input 4 | GPIO36 | Internal | LOW = active (inverted by firmware) |
 
 ### 1-Wire Sensors (PCB Pull-up Resistors)
 
@@ -55,7 +57,7 @@
 | RTS/CTS | Disabled | — |
 
 Supported modules: SIM7600E (4G), SIM7600G (4G+GPS), SIM800L (2G)
-Firmware configures SIM7600 DCE by default.
+Firmware DCE type is selectable via `menuconfig` → `Modem Manager Configuration`.
 
 ### RS485 UART
 
@@ -88,12 +90,17 @@ Firmware configures SIM7600 DCE by default.
 | CS | GPIO11 | SPI2_HOST |
 | CD (Card Detect) | GPIO21 | — |
 
+### Analog Inputs (0–10V via Voltage Divider)
+
+| Channel | GPIO | ADC Channel | Range |
+|---|---|---|---|
+| Analog 1 | GPIO4 | ADC1_CH3 | 0–10V (divider 1:11) |
+| Analog 2 | GPIO5 | ADC1_CH4 | 0–10V (divider 1:11) |
+
 ### Free GPIOs (Expansion)
 
 | GPIO | Default Config | Notes |
 |---|---|---|
-| GPIO4 | Input, pull-up | No PCB pull-up |
-| GPIO5 | Input, pull-up | No PCB pull-up |
 | GPIO6 | Input, pull-up | No PCB pull-up |
 | GPIO38 | Input, pull-up | No PCB pull-up |
 

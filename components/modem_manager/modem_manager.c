@@ -110,8 +110,18 @@ esp_err_t modem_manager_init(void) {
   esp_modem_dce_config_t dce_config =
       ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_MODEM_APN);
 
-  ESP_LOGI(TAG, "Initializing esp_modem with APN: %s", CONFIG_MODEM_APN);
-  s_dce = esp_modem_new_dev(ESP_MODEM_DCE_SIM7600, &dte_config, &dce_config,
+  esp_modem_dce_device_t modem_dev = ESP_MODEM_DCE_SIM7600;
+#ifdef CONFIG_MODEM_TYPE_SIM800L
+  modem_dev = ESP_MODEM_DCE_SIM800;
+#endif
+  ESP_LOGI(TAG, "Initializing esp_modem (%s) with APN: %s",
+#ifdef CONFIG_MODEM_TYPE_SIM800L
+           "SIM800L",
+#else
+           "SIM7600",
+#endif
+           CONFIG_MODEM_APN);
+  s_dce = esp_modem_new_dev(modem_dev, &dte_config, &dce_config,
                             s_esp_netif);
   if (s_dce == NULL) {
     ESP_LOGE(TAG, "Failed to create modem DCE");

@@ -95,7 +95,7 @@ esp_err_t command_handler_process(const char *json_cmd, int len) {
       send_response(cmd, "error", "Sensor read failed");
     }
   } else if (strcmp(cmd, "get_inputs") == 0) {
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 4; i++) {
       mqtt_wrapper_publish_input_state(i, digital_input_get(i));
     }
     send_response(cmd, "ok", "Inputs published");

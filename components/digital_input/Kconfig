@@ -12,4 +12,16 @@ menu "Digital Input Configuration"
         help
             GPIO pin for digital input 2 (dry contact).
 
+    config DIGITAL_INPUT_3_GPIO
+        int "Digital Input 3 GPIO"
+        default 35
+        help
+            GPIO pin for digital input 3 (dry contact).
+
+    config DIGITAL_INPUT_4_GPIO
+        int "Digital Input 4 GPIO"
+        default 36
+        help
+            GPIO pin for digital input 4 (dry contact).
+
 endmenu

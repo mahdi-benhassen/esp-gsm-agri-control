@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include "web_assets.h"
+#include "analog_input.h"
 #include "config_store.h"
 #include "digital_input.h"
 #include "esp_event.h"
@@ -224,10 +225,12 @@ static esp_err_t post_relays(httpd_req_t *req) {
 }
 
 static esp_err_t get_inputs(httpd_req_t *req) {
-  char buf[64];
-  snprintf(buf, sizeof(buf), "[%s,%s]",
+  char buf[128];
+  snprintf(buf, sizeof(buf), "[%s,%s,%s,%s]",
            digital_input_get(0) ? "true" : "false",
-           digital_input_get(1) ? "true" : "false");
+           digital_input_get(1) ? "true" : "false",
+           digital_input_get(2) ? "true" : "false",
+           digital_input_get(3) ? "true" : "false");
   return send_json(req, buf);
 }
 
@@ -241,6 +244,14 @@ static esp_err_t get_sensors(httpd_req_t *req) {
            (double)data.soil_moisture_pct,
            data.sensors_valid ? "true" : "false",
            (long long)data.timestamp_ms);
+  return send_json(req, buf);
+}
+
+static esp_err_t get_analog(httpd_req_t *req) {
+  int mv1 = analog_input_read_mv(0);
+  int mv2 = analog_input_read_mv(1);
+  char buf[64];
+  snprintf(buf, sizeof(buf), "[%d,%d]", mv1, mv2);
   return send_json(req, buf);
 }
 
@@ -322,7 +333,8 @@ static esp_err_t get_config(httpd_req_t *req) {
            "{\"device_name\":\"%s\",\"mqtt_broker\":\"%s\","
            "\"sensor_read_interval_sec\":%lu,\"mqtt_publish_interval_sec\":%lu,"
            "\"input_debounce_ms\":%lu,\"input_1_inverted\":%s,"
-           "\"input_2_inverted\":%s,\"relay_interlock_enabled\":%s,"
+           "\"input_2_inverted\":%s,\"input_3_inverted\":%s,"
+           "\"input_4_inverted\":%s,\"relay_interlock_enabled\":%s,"
            "\"lcd_enabled\":%s,\"sd_log_enabled\":%s}",
            cfg.device_name, cfg.mqtt_broker_uri,
            (unsigned long)cfg.sensor_read_interval_sec,
@@ -330,6 +342,8 @@ static esp_err_t get_config(httpd_req_t *req) {
            (unsigned long)cfg.input_debounce_ms,
            cfg.input_1_inverted ? "true" : "false",
            cfg.input_2_inverted ? "true" : "false",
+           cfg.input_3_inverted ? "true" : "false",
+           cfg.input_4_inverted ? "true" : "false",
            cfg.relay_interlock_enabled ? "true" : "false",
            cfg.lcd_enabled ? "true" : "false",
            cfg.sd_log_enabled ? "true" : "false");
@@ -343,12 +357,14 @@ static esp_err_t post_config(httpd_req_t *req) {
 
   const char *keys[] = {"device_name", "mqtt_broker", "sensor_read_interval_sec",
                          "mqtt_publish_interval_sec", "input_debounce_ms",
-                         "input_1_inverted", "input_2_inverted",
-                         "relay_interlock_enabled", "lcd_enabled", "sd_log_enabled", NULL};
+                         "input_1_inverted", "input_2_inverted", "input_3_inverted",
+                         "input_4_inverted", "relay_interlock_enabled", "lcd_enabled",
+                         "sd_log_enabled", NULL};
   const char *nvs_map[] = {"device_name", "mqtt_broker", "sensor_interval",
                             "mqtt_interval", "debounce_ms",
-                            "input_1_inverted", "input_2_inverted",
-                            "interlock", "lcd_enabled", "sd_log_enabled", NULL};
+                            "input_1_inverted", "input_2_inverted", "input_3_inverted",
+                            "input_4_inverted", "interlock", "lcd_enabled",
+                            "sd_log_enabled", NULL};
 
   for (int i = 0; keys[i] != NULL; i++) {
     char *p = strstr(content, keys[i]);
@@ -386,6 +402,7 @@ static const httpd_uri_t s_uris[] = {
     {.uri = "/api/relays",    .method = HTTP_POST, .handler = post_relays},
     {.uri = "/api/inputs",    .method = HTTP_GET,  .handler = get_inputs},
     {.uri = "/api/sensors",   .method = HTTP_GET,  .handler = get_sensors},
+    {.uri = "/api/analog",    .method = HTTP_GET,  .handler = get_analog},
     {.uri = "/api/wifi",      .method = HTTP_GET,  .handler = get_wifi},
     {.uri = "/api/wifi",      .method = HTTP_POST, .handler = post_wifi},
     {.uri = "/api/config",    .method = HTTP_GET,  .handler = get_config},

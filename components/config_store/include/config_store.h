@@ -11,6 +11,8 @@ typedef struct {
   char device_name[32];
   bool input_1_inverted;
   bool input_2_inverted;
+  bool input_3_inverted;
+  bool input_4_inverted;
   uint32_t input_debounce_ms;
   bool relay_interlock_enabled;
   bool lcd_enabled;

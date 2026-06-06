@@ -26,6 +26,8 @@ static const app_config_t s_defaults = {
     .device_name = "KC868-A2v3",
     .input_1_inverted = true,
     .input_2_inverted = true,
+    .input_3_inverted = true,
+    .input_4_inverted = true,
     .input_debounce_ms = 50,
     .relay_interlock_enabled = false,
     .lcd_enabled = true,
@@ -119,6 +121,10 @@ esp_err_t config_store_load(app_config_t *cfg) {
     cfg->input_1_inverted = (val8 != 0);
   if (nvs_get_u8(handle, "inv_in2", &val8) == ESP_OK)
     cfg->input_2_inverted = (val8 != 0);
+  if (nvs_get_u8(handle, "inv_in3", &val8) == ESP_OK)
+    cfg->input_3_inverted = (val8 != 0);
+  if (nvs_get_u8(handle, "inv_in4", &val8) == ESP_OK)
+    cfg->input_4_inverted = (val8 != 0);
   if (nvs_get_u8(handle, "interlock", &val8) == ESP_OK)
     cfg->relay_interlock_enabled = (val8 != 0);
   if (nvs_get_u8(handle, "lcd_en", &val8) == ESP_OK)
@@ -157,6 +163,8 @@ esp_err_t config_store_save(const app_config_t *cfg) {
       (err = nvs_set_u32(handle, "dbnc_ms", cfg->input_debounce_ms)) != ESP_OK ||
       (err = nvs_set_u8(handle, "inv_in1", cfg->input_1_inverted ? 1 : 0)) != ESP_OK ||
       (err = nvs_set_u8(handle, "inv_in2", cfg->input_2_inverted ? 1 : 0)) != ESP_OK ||
+      (err = nvs_set_u8(handle, "inv_in3", cfg->input_3_inverted ? 1 : 0)) != ESP_OK ||
+      (err = nvs_set_u8(handle, "inv_in4", cfg->input_4_inverted ? 1 : 0)) != ESP_OK ||
       (err = nvs_set_u8(handle, "interlock", cfg->relay_interlock_enabled ? 1 : 0)) != ESP_OK ||
       (err = nvs_set_u8(handle, "lcd_en", cfg->lcd_enabled ? 1 : 0)) != ESP_OK ||
       (err = nvs_set_u8(handle, "sd_log", cfg->sd_log_enabled ? 1 : 0)) != ESP_OK ||
@@ -216,6 +224,10 @@ esp_err_t config_store_set_field(const char *key, const char *value) {
     err = parse_bool_value(value, &temp_config.input_1_inverted);
   } else if (strcmp(key, "input_2_inverted") == 0) {
     err = parse_bool_value(value, &temp_config.input_2_inverted);
+  } else if (strcmp(key, "input_3_inverted") == 0) {
+    err = parse_bool_value(value, &temp_config.input_3_inverted);
+  } else if (strcmp(key, "input_4_inverted") == 0) {
+    err = parse_bool_value(value, &temp_config.input_4_inverted);
   } else if (strcmp(key, "interlock") == 0) {
     err = parse_bool_value(value, &temp_config.relay_interlock_enabled);
   } else if (strcmp(key, "lcd_enabled") == 0) {

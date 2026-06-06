@@ -1,0 +1,34 @@
+menu "Analog Input Configuration"
+
+    config ANALOG_INPUT_1_GPIO
+        int "Analog Input 1 GPIO"
+        default 4
+        help
+            GPIO pin for analog input 1 (0-10V).
+
+    config ANALOG_INPUT_1_ADC_CHANNEL
+        int "Analog Input 1 ADC Channel"
+        default 3
+        help
+            ADC1 channel number for analog input 1 (GPIO4 = ADC1_CH3).
+
+    config ANALOG_INPUT_2_GPIO
+        int "Analog Input 2 GPIO"
+        default 5
+        help
+            GPIO pin for analog input 2 (0-10V).
+
+    config ANALOG_INPUT_2_ADC_CHANNEL
+        int "Analog Input 2 ADC Channel"
+        default 4
+        help
+            ADC1 channel number for analog input 2 (GPIO5 = ADC1_CH4).
+
+    config ANALOG_INPUT_DIVIDER_RATIO
+        int "Voltage divider ratio (x1000)"
+        default 11000
+        help
+            Ratio of terminal voltage to ADC pin voltage, multiplied by 1000.
+            Example: 100k+10k divider = divide by 11 -> 11000.
+
+endmenu
