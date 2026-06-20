@@ -15,7 +15,6 @@
 static const char *TAG = "SD_LOGGER";
 static bool s_mounted = false;
 static char s_log_path[64] = "/sdcard/log.txt";
-static FILE *s_log_file = NULL;
 static SemaphoreHandle_t s_mutex = NULL;
 
 esp_err_t sd_card_logger_init(void) {

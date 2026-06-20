@@ -19,11 +19,10 @@ static int s_last_rssi = -1;
 static SemaphoreHandle_t s_mutex = NULL;
 
 static void modem_power_on(void) {
-  if (CONFIG_MODEM_POWER_PIN < 0) {
-    ESP_LOGI(TAG, "No PWRKEY pin configured, skipping power pulse.");
-    return;
-  }
-
+#if CONFIG_MODEM_POWER_PIN < 0
+  ESP_LOGI(TAG, "No PWRKEY pin configured, skipping power pulse.");
+  return;
+#else
   ESP_LOGI(TAG, "Power pulsing modem (PWRKEY GPIO %d)...",
            CONFIG_MODEM_POWER_PIN);
   gpio_config_t io_conf = {
@@ -41,6 +40,7 @@ static void modem_power_on(void) {
 
   ESP_LOGI(TAG, "Power pulse complete. Waiting for modem boot...");
   vTaskDelay(pdMS_TO_TICKS(3000));
+#endif
 }
 
 static void on_ip_event(void *arg, esp_event_base_t base, int32_t event_id,
