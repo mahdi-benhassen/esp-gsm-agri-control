@@ -158,11 +158,13 @@ Navigate to `Component config` to adjust:
 
 The ESP32 serves a responsive single-page web application accessible via WiFi. Open a browser to the device IP address (shown on the LCD display or serial console).
 
+The dashboard will prompt for the web credentials configured in `menuconfig` (defaults: `admin` / `admin`). Credentials are cached in the browser for the session.
+
 ### WiFi Setup
 
 1. Power on the board — it creates an access point: **`KC868-A2v3-Setup`** (password: `admin1234`)
 2. Connect your phone/laptop to this AP
-3. Open `http://192.168.4.1` in a browser
+3. Open `http://192.168.4.1` in a browser and enter the web credentials when prompted
 4. Go to the **WiFi** tab, enter your router SSID and password, click **Connect**
 5. The board joins your network; find its new IP on the LCD or serial log
 
