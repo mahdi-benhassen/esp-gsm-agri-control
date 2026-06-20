@@ -85,8 +85,7 @@ esp_err_t sensor_hub_read(sensor_data_t *data) {
   return ESP_OK;
 }
 
-const sensor_data_t *sensor_hub_get_latest(void) {
-  static sensor_data_t snapshot;
-  if (sensor_hub_read(&snapshot) != ESP_OK) return NULL;
-  return &snapshot;
+esp_err_t sensor_hub_get_latest(sensor_data_t *out) {
+  if (out == NULL) return ESP_ERR_INVALID_ARG;
+  return sensor_hub_read(out);
 }

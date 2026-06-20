@@ -1,0 +1,16 @@
+menu "Factory Reset Configuration"
+
+    config FACTORY_RESET_GPIO
+        int "Factory Reset GPIO"
+        default 38
+        help
+            GPIO connected to the factory reset button (active-low, pull-up).
+
+    config FACTORY_RESET_HOLD_MS
+        int "Factory Reset hold time (ms)"
+        default 5000
+        range 1000 30000
+        help
+            How long the button must be held to trigger a factory reset.
+
+endmenu

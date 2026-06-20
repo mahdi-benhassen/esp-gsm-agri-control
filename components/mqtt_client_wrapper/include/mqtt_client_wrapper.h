@@ -22,6 +22,7 @@ esp_err_t mqtt_wrapper_reconfigure(void);
 esp_err_t mqtt_wrapper_publish_sensor_data(const sensor_data_t *data);
 esp_err_t mqtt_wrapper_publish_relay_state(int channel, bool state);
 esp_err_t mqtt_wrapper_publish_input_state(int channel, bool state);
+esp_err_t mqtt_wrapper_publish_analog(int channel, int voltage_mv);
 esp_err_t mqtt_wrapper_publish_status(const char *status_json);
 esp_err_t mqtt_wrapper_publish(const char *topic_suffix, const char *payload);
 bool mqtt_wrapper_is_connected(void);

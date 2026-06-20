@@ -59,9 +59,17 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     break;
 
   case MQTT_EVENT_DATA: {
+    // Rate limit: reject commands larger than 1KB to prevent heap exhaustion
+    if (event->data_len > 1024) {
+      ESP_LOGW(TAG, "Oversized MQTT command dropped (%d bytes)", event->data_len);
+      break;
+    }
     mqtt_command_event_t cmd_evt = {.data = malloc(event->data_len + 1),
                                     .data_len = event->data_len};
-    if (cmd_evt.data == NULL) break;
+    if (cmd_evt.data == NULL) {
+      ESP_LOGW(TAG, "Failed to allocate MQTT command buffer");
+      break;
+    }
     memcpy(cmd_evt.data, event->data, event->data_len);
     cmd_evt.data[event->data_len] = '\0';
     esp_err_t err = esp_event_post(MQTT_APP_EVENTS,
@@ -100,6 +108,13 @@ static esp_err_t mqtt_wrapper_start_locked(void) {
                             .msg = "{\"status\":\"offline\"}",
                             .qos = 1,
                             .retain = 1}};
+
+  // Enable TLS if broker URI uses mqtts://
+  if (strncmp(broker_uri, "mqtts://", 8) == 0) {
+    mqtt_cfg.broker.verification.certificate = NULL; // Use system CA store
+    mqtt_cfg.broker.verification.skip_cert_common_name_check = false;
+    ESP_LOGI(TAG, "MQTT TLS enabled");
+  }
 
   s_client = esp_mqtt_client_init(&mqtt_cfg);
   if (s_client == NULL) {
@@ -226,6 +241,31 @@ esp_err_t mqtt_wrapper_publish_input_state(int channel, bool state) {
 
   char topic[128];
   build_topic("inputs", topic, sizeof(topic));
+
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  int msg_id = (s_client != NULL && s_connected)
+                   ? esp_mqtt_client_publish(s_client, topic, json_str, 0, 1, 0)
+                   : -1;
+  xSemaphoreGive(s_mutex);
+  free(json_str);
+
+  return (msg_id >= 0) ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t mqtt_wrapper_publish_analog(int channel, int voltage_mv) {
+  if (!mqtt_wrapper_is_connected()) return ESP_ERR_INVALID_STATE;
+
+  cJSON *root = cJSON_CreateObject();
+  if (root == NULL) return ESP_ERR_NO_MEM;
+  cJSON_AddNumberToObject(root, "channel", channel);
+  cJSON_AddNumberToObject(root, "voltage_mv", voltage_mv);
+
+  char *json_str = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  if (json_str == NULL) return ESP_ERR_NO_MEM;
+
+  char topic[128];
+  build_topic("analog", topic, sizeof(topic));
 
   xSemaphoreTake(s_mutex, portMAX_DELAY);
   int msg_id = (s_client != NULL && s_connected)

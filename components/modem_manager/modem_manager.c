@@ -178,23 +178,27 @@ esp_err_t modem_manager_reconnect(void) {
   ESP_LOGW(TAG, "Modem reconnection requested...");
   xSemaphoreTake(s_mutex, portMAX_DELAY);
   s_connected = false;
-  if (s_dce) {
-    esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
-    esp_modem_set_mode(s_dce, ESP_MODEM_MODE_DATA);
-  }
+  esp_modem_dce_t *dce = s_dce;
   xSemaphoreGive(s_mutex);
+
+  if (dce) {
+    esp_modem_set_mode(dce, ESP_MODEM_MODE_COMMAND);
+    esp_modem_set_mode(dce, ESP_MODEM_MODE_DATA);
+  }
   return ESP_OK;
 }
 
 esp_err_t modem_manager_deinit(void) {
   ESP_LOGI(TAG, "Deinitializing modem...");
   xSemaphoreTake(s_mutex, portMAX_DELAY);
-  if (s_dce) {
-    esp_modem_set_mode(s_dce, ESP_MODEM_MODE_COMMAND);
-    esp_modem_destroy(s_dce);
-    s_dce = NULL;
-  }
+  esp_modem_dce_t *dce = s_dce;
+  s_dce = NULL;
   s_connected = false;
   xSemaphoreGive(s_mutex);
+
+  if (dce) {
+    esp_modem_set_mode(dce, ESP_MODEM_MODE_COMMAND);
+    esp_modem_destroy(dce);
+  }
   return ESP_OK;
 }

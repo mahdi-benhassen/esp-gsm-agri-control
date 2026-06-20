@@ -1,6 +1,5 @@
 idf_component_register(
-    SRCS "eeprom_storage.c"
+    SRCS "i2c_bus_manager.c"
     INCLUDE_DIRS "include"
     REQUIRES driver
-    PRIV_REQUIRES freertos i2c_bus_manager
 )

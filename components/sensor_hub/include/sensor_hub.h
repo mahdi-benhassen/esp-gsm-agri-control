@@ -18,4 +18,4 @@ enum { SENSOR_EVENT_NEW_DATA };
 
 esp_err_t sensor_hub_init(void);
 esp_err_t sensor_hub_read(sensor_data_t *data);
-const sensor_data_t *sensor_hub_get_latest(void);
+esp_err_t sensor_hub_get_latest(sensor_data_t *out);

@@ -89,7 +89,8 @@ bool digital_input_get(int channel) {
 
   bool previous_stable_raw = inverted ? !s_input_states[channel] : s_input_states[channel];
   bool stable_raw = raw;
-  if (now_ms < s_deadline_ms[channel]) {
+  // Handle uint32 wraparound safely
+  if ((int32_t)(s_deadline_ms[channel] - now_ms) > 0) {
     stable_raw = previous_stable_raw;
   }
 

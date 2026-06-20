@@ -1,0 +1,11 @@
+menu "Safe State Configuration"
+
+    config SAFE_STATE_DEFAULT_TIMEOUT_SEC
+        int "Default safe-state timeout (seconds)"
+        default 300
+        range 10 3600
+        help
+            Heartbeat timeout before the safe-state trigger turns all relays OFF.
+            Can be overridden at runtime via config_store.
+
+endmenu

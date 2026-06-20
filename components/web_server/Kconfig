@@ -18,4 +18,23 @@ menu "Web Server Configuration"
         string "WiFi AP Password (setup mode, min 8 chars)"
         default "admin1234"
 
+    config WEB_SERVER_AUTH_USERNAME
+        string "Web UI Username"
+        default "admin"
+        help
+            HTTP Basic Auth username for the web interface.
+
+    config WEB_SERVER_AUTH_PASSWORD
+        string "Web UI Password"
+        default "admin"
+        help
+            HTTP Basic Auth password for the web interface.
+            CHANGE THIS BEFORE DEPLOYMENT.
+
+    config WEB_SERVER_RATE_LIMIT_MS
+        int "API Rate Limit (ms between requests)"
+        default 500
+        help
+            Global minimum time between authenticated API requests.
+
 endmenu

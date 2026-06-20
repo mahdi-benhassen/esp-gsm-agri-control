@@ -1,6 +1,8 @@
 #include "analog_input.h"
 #include "driver/gpio.h"
 #include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -18,6 +20,8 @@ static const gpio_num_t s_gpio_pins[ANALOG_INPUT_COUNT] = {
 };
 
 static adc_oneshot_unit_handle_t s_adc_handle = NULL;
+static adc_cali_handle_t s_adc_cali[ANALOG_INPUT_COUNT] = {NULL};
+static bool s_cali_enabled[ANALOG_INPUT_COUNT] = {false};
 static SemaphoreHandle_t s_mutex = NULL;
 
 esp_err_t analog_input_init(void) {
@@ -46,6 +50,23 @@ esp_err_t analog_input_init(void) {
                s_adc_channels[i], esp_err_to_name(err));
       return err;
     }
+
+    // Create calibration scheme
+    adc_cali_curve_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    esp_err_t cali_err = adc_cali_create_scheme_curve_fitting(&cali_config, &s_adc_cali[i]);
+    if (cali_err == ESP_OK) {
+      s_cali_enabled[i] = true;
+      ESP_LOGI(TAG, "ADC calibration enabled for ch %d", s_adc_channels[i]);
+    } else {
+      ESP_LOGW(TAG, "ADC calibration failed for ch %d: %s",
+               s_adc_channels[i], esp_err_to_name(cali_err));
+      s_cali_enabled[i] = false;
+    }
+
     ESP_LOGI(TAG, "Analog input %d configured on GPIO %d (ADC ch %d)",
              i + 1, s_gpio_pins[i], s_adc_channels[i]);
   }
@@ -75,11 +96,19 @@ int analog_input_read_mv(int channel) {
   int raw = analog_input_read_raw(channel);
   if (raw < 0) return -1;
 
-  // Scale: raw (0-4095) -> ADC pin voltage (0-3300mV) -> terminal voltage
-  // KC868-A2 uses a voltage divider.  Common values:
-  //   0-10V range: 100k + 10k divider -> ADC sees V_in / 11
-  //   So terminal voltage = ADC_voltage * 11
-  int64_t adc_mv = (int64_t)raw * 3300LL / 4095LL;
-  int64_t terminal_mv = adc_mv * CONFIG_ANALOG_INPUT_DIVIDER_RATIO / 1000LL;
+  int voltage_mv = 0;
+  if (s_cali_enabled[channel]) {
+    esp_err_t err = adc_cali_raw_to_voltage(s_adc_cali[channel], raw, &voltage_mv);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "ADC cali conversion failed: %s", esp_err_to_name(err));
+      return -1;
+    }
+  } else {
+    // Fallback linear scaling
+    voltage_mv = (int)((int64_t)raw * 3300LL / 4095LL);
+  }
+
+  // Scale to terminal voltage via divider ratio
+  int64_t terminal_mv = (int64_t)voltage_mv * CONFIG_ANALOG_INPUT_DIVIDER_RATIO / 1000LL;
   return (int)terminal_mv;
 }

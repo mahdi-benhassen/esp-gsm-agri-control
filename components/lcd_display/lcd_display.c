@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "i2c_bus_manager.h"
 #include <string.h>
 
 static const char *TAG = "LCD_DISPLAY";
@@ -130,6 +131,11 @@ static void draw_text(int x, int y, const char *text) {
 }
 
 esp_err_t lcd_display_init(void) {
+  if (!i2c_bus_manager_is_initialized()) {
+    ESP_LOGE(TAG, "I2C bus not initialized");
+    return ESP_ERR_INVALID_STATE;
+  }
+
   memset(s_framebuffer, 0, sizeof(s_framebuffer));
 
   if (ssd1306_write_cmd(0xAE) != ESP_OK) {  // Display off

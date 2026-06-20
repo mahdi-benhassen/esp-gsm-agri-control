@@ -17,6 +17,7 @@ typedef struct {
   bool relay_interlock_enabled;
   bool lcd_enabled;
   bool sd_log_enabled;
+  uint32_t safe_state_timeout_sec;
 } app_config_t;
 
 esp_err_t config_store_init(void);

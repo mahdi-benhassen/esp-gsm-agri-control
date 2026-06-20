@@ -1,6 +1,7 @@
 #include "rtc_manager.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
+#include "i2c_bus_manager.h"
 
 static const char *TAG = "RTC_MANAGER";
 
@@ -15,20 +16,6 @@ static inline uint8_t bcd_to_dec(uint8_t val) {
 
 static inline uint8_t dec_to_bcd(uint8_t val) {
   return (val / 10 * 16) + (val % 10);
-}
-
-static esp_err_t i2c_init(void) {
-  i2c_config_t conf = {
-      .mode = I2C_MODE_MASTER,
-      .sda_io_num = CONFIG_RTC_I2C_SDA,
-      .scl_io_num = CONFIG_RTC_I2C_SCL,
-      .sda_pullup_en = GPIO_PULLUP_ENABLE,
-      .scl_pullup_en = GPIO_PULLUP_ENABLE,
-      .master.clk_speed = 100000,
-  };
-  esp_err_t err = i2c_param_config(I2C_MASTER_PORT, &conf);
-  if (err != ESP_OK) return err;
-  return i2c_driver_install(I2C_MASTER_PORT, I2C_MODE_MASTER, 0, 0, 0);
 }
 
 static esp_err_t ds3231_read_reg(uint8_t reg, uint8_t *data, size_t len) {
@@ -59,14 +46,13 @@ static esp_err_t ds3231_write_reg(uint8_t reg, uint8_t *data, size_t len) {
 }
 
 esp_err_t rtc_manager_init(void) {
-  esp_err_t err = i2c_init();
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "I2C init failed: %s", esp_err_to_name(err));
-    return err;
+  if (!i2c_bus_manager_is_initialized()) {
+    ESP_LOGE(TAG, "I2C bus not initialized");
+    return ESP_ERR_INVALID_STATE;
   }
 
   uint8_t test_byte = 0;
-  err = ds3231_read_reg(0x00, &test_byte, 1);
+  esp_err_t err = ds3231_read_reg(0x00, &test_byte, 1);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "DS3231 not detected at 0x%02X", DS3231_ADDR);
     return err;

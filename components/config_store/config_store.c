@@ -18,6 +18,8 @@ static SemaphoreHandle_t s_mutex = NULL;
 #define CONFIG_MAX_INTERVAL_SEC  86400U
 #define CONFIG_MIN_DEBOUNCE_MS   10U
 #define CONFIG_MAX_DEBOUNCE_MS   5000U
+#define CONFIG_MIN_SAFE_STATE_SEC  10U
+#define CONFIG_MAX_SAFE_STATE_SEC  3600U
 
 static const app_config_t s_defaults = {
     .sensor_read_interval_sec = 30,
@@ -32,6 +34,7 @@ static const app_config_t s_defaults = {
     .relay_interlock_enabled = false,
     .lcd_enabled = true,
     .sd_log_enabled = true,
+    .safe_state_timeout_sec = 300,
 };
 
 static void sanitize_config(app_config_t *cfg) {
@@ -46,6 +49,10 @@ static void sanitize_config(app_config_t *cfg) {
   if (cfg->input_debounce_ms < CONFIG_MIN_DEBOUNCE_MS ||
       cfg->input_debounce_ms > CONFIG_MAX_DEBOUNCE_MS) {
     cfg->input_debounce_ms = s_defaults.input_debounce_ms;
+  }
+  if (cfg->safe_state_timeout_sec < CONFIG_MIN_SAFE_STATE_SEC ||
+      cfg->safe_state_timeout_sec > CONFIG_MAX_SAFE_STATE_SEC) {
+    cfg->safe_state_timeout_sec = s_defaults.safe_state_timeout_sec;
   }
   cfg->mqtt_broker_uri[sizeof(cfg->mqtt_broker_uri) - 1] = '\0';
   cfg->device_name[sizeof(cfg->device_name) - 1] = '\0';
@@ -115,6 +122,7 @@ esp_err_t config_store_load(app_config_t *cfg) {
   nvs_get_u32(handle, "sens_intvl", &cfg->sensor_read_interval_sec);
   nvs_get_u32(handle, "mqtt_intvl", &cfg->mqtt_publish_interval_sec);
   nvs_get_u32(handle, "dbnc_ms", &cfg->input_debounce_ms);
+  nvs_get_u32(handle, "safe_tout", &cfg->safe_state_timeout_sec);
 
   uint8_t val8 = 0;
   if (nvs_get_u8(handle, "inv_in1", &val8) == ESP_OK)
@@ -134,10 +142,12 @@ esp_err_t config_store_load(app_config_t *cfg) {
 
   size_t sz = sizeof(cfg->mqtt_broker_uri);
   if (nvs_get_str(handle, "mqtt_uri", cfg->mqtt_broker_uri, &sz) != ESP_OK)
-    strcpy(cfg->mqtt_broker_uri, s_defaults.mqtt_broker_uri);
+    strncpy(cfg->mqtt_broker_uri, s_defaults.mqtt_broker_uri,
+            sizeof(cfg->mqtt_broker_uri) - 1);
   sz = sizeof(cfg->device_name);
   if (nvs_get_str(handle, "dev_name", cfg->device_name, &sz) != ESP_OK)
-    strcpy(cfg->device_name, s_defaults.device_name);
+    strncpy(cfg->device_name, s_defaults.device_name,
+            sizeof(cfg->device_name) - 1);
 
   sanitize_config(cfg);
   nvs_close(handle);
@@ -161,6 +171,7 @@ esp_err_t config_store_save(const app_config_t *cfg) {
   if ((err = nvs_set_u32(handle, "sens_intvl", cfg->sensor_read_interval_sec)) != ESP_OK ||
       (err = nvs_set_u32(handle, "mqtt_intvl", cfg->mqtt_publish_interval_sec)) != ESP_OK ||
       (err = nvs_set_u32(handle, "dbnc_ms", cfg->input_debounce_ms)) != ESP_OK ||
+      (err = nvs_set_u32(handle, "safe_tout", cfg->safe_state_timeout_sec)) != ESP_OK ||
       (err = nvs_set_u8(handle, "inv_in1", cfg->input_1_inverted ? 1 : 0)) != ESP_OK ||
       (err = nvs_set_u8(handle, "inv_in2", cfg->input_2_inverted ? 1 : 0)) != ESP_OK ||
       (err = nvs_set_u8(handle, "inv_in3", cfg->input_3_inverted ? 1 : 0)) != ESP_OK ||
@@ -220,6 +231,10 @@ esp_err_t config_store_set_field(const char *key, const char *value) {
     err = parse_u32_range(value, CONFIG_MIN_DEBOUNCE_MS,
                           CONFIG_MAX_DEBOUNCE_MS,
                           &temp_config.input_debounce_ms);
+  } else if (strcmp(key, "safe_state_timeout") == 0) {
+    err = parse_u32_range(value, CONFIG_MIN_SAFE_STATE_SEC,
+                          CONFIG_MAX_SAFE_STATE_SEC,
+                          &temp_config.safe_state_timeout_sec);
   } else if (strcmp(key, "input_1_inverted") == 0) {
     err = parse_bool_value(value, &temp_config.input_1_inverted);
   } else if (strcmp(key, "input_2_inverted") == 0) {

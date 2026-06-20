@@ -1,4 +1,5 @@
 #include "app_logic.h"
+#include "analog_input.h"
 #include "config_store.h"
 #include "digital_input.h"
 #include "esp_event.h"
@@ -11,6 +12,7 @@
 #include "mqtt_client_wrapper.h"
 #include "relay_control.h"
 #include "rtc_manager.h"
+#include "safe_state.h"
 #include "sensor_hub.h"
 #include "system_monitor.h"
 #include "web_server.h"
@@ -49,8 +51,9 @@ static void on_relay_changed(void *arg, esp_event_base_t base,
 }
 
 static void on_mqtt_connected(void *arg, esp_event_base_t base,
-                              int32_t event_id, void *data) {
+                               int32_t event_id, void *data) {
   ESP_LOGI(TAG, "MQTT connected - publishing initial state");
+  safe_state_feed();
 
   for (int i = 0; i < RELAY_CH_MAX; i++) {
     mqtt_wrapper_publish_relay_state(i, relay_get(i));
@@ -67,6 +70,11 @@ static void on_mqtt_connected(void *arg, esp_event_base_t base,
       free(json);
     }
   }
+}
+
+static void on_mqtt_disconnected(void *arg, esp_event_base_t base,
+                                  int32_t event_id, void *data) {
+  ESP_LOGW(TAG, "MQTT disconnected - safe-state monitoring");
 }
 
 static void app_logic_task(void *pvParameters) {
@@ -91,11 +99,22 @@ static void app_logic_task(void *pvParameters) {
       last_input_scan_ms = now_ms;
     }
 
-    // Publish sensor data
-    if ((now - last_sensor_pub) >= cfg.mqtt_publish_interval_sec) {
+    // Feed heartbeat watchdog whenever we have connectivity
+    if (mqtt_wrapper_is_connected()) {
+      safe_state_feed();
+    }
+
+    // Publish sensor data and analog inputs
+    if ((now - last_sensor_pub) >= cfg.sensor_read_interval_sec) {
       sensor_data_t sd;
       if (sensor_hub_read(&sd) == ESP_OK && mqtt_wrapper_is_connected()) {
         mqtt_wrapper_publish_sensor_data(&sd);
+        for (int i = 0; i < ANALOG_INPUT_COUNT; i++) {
+          int mv = analog_input_read_mv(i);
+          if (mv >= 0) {
+            mqtt_wrapper_publish_analog(i, mv);
+          }
+        }
         last_sensor_pub = now;
       }
     }
@@ -164,6 +183,8 @@ esp_err_t app_logic_start(void) {
                              &on_relay_changed, NULL);
   esp_event_handler_register(MQTT_APP_EVENTS, MQTT_APP_EVENT_CONNECTED,
                              &on_mqtt_connected, NULL);
+  esp_event_handler_register(MQTT_APP_EVENTS, MQTT_APP_EVENT_DISCONNECTED,
+                             &on_mqtt_disconnected, NULL);
 
   BaseType_t ok = xTaskCreatePinnedToCore(
       app_logic_task, "app_logic", CONFIG_APP_LOGIC_TASK_STACK_SIZE, NULL,

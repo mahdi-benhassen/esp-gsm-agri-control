@@ -102,7 +102,6 @@ Firmware DCE type is selectable via `menuconfig` → `Modem Manager Configuratio
 | GPIO | Default Config | Notes |
 |---|---|---|
 | GPIO6 | Input, pull-up | No PCB pull-up |
-| GPIO38 | Input, pull-up | No PCB pull-up |
 
 ### System Buttons
 
@@ -110,3 +109,4 @@ Firmware DCE type is selectable via `menuconfig` → `Modem Manager Configuratio
 |---|---|---|
 | S1 (Reset) | EN | ESP32 hardware reset |
 | S2 (Download) | GPIO0 | Boot mode select (hold + press RST) |
+| S3 (Factory Reset) | GPIO38 | Hold 5s to erase NVS and reboot |

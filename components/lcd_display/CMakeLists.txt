@@ -2,5 +2,5 @@ idf_component_register(
     SRCS "lcd_display.c"
     INCLUDE_DIRS "include"
     REQUIRES driver
-    PRIV_REQUIRES freertos rtc_manager
+    PRIV_REQUIRES freertos i2c_bus_manager
 )

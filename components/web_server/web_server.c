@@ -8,10 +8,12 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
+#include "mbedtls/base64.h"
 #include "modem_manager.h"
 #include "mqtt_client_wrapper.h"
 #include "nvs_flash.h"
@@ -19,8 +21,10 @@
 #include "rtc_manager.h"
 #include "sensor_hub.h"
 #include "system_monitor.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 
 static const char *TAG = "WEB_SERVER";
@@ -35,6 +39,70 @@ static SemaphoreHandle_t s_wifi_mutex = NULL;
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_count = 0;
 
+// Rate limiting
+static uint32_t s_last_req_time_ms = 0;
+static SemaphoreHandle_t s_rate_mutex = NULL;
+
+static bool rate_limit_check(void) {
+  if (s_rate_mutex == NULL) return true;
+  xSemaphoreTake(s_rate_mutex, portMAX_DELAY);
+  uint32_t now = (uint32_t)(esp_timer_get_time() / 1000ULL);
+  bool ok = (now - s_last_req_time_ms) >= CONFIG_WEB_SERVER_RATE_LIMIT_MS;
+  if (ok) s_last_req_time_ms = now;
+  xSemaphoreGive(s_rate_mutex);
+  return ok;
+}
+
+static bool constant_time_equal(const char *a, const char *b, size_t len) {
+  uint8_t diff = 0;
+  for (size_t i = 0; i < len; i++) {
+    diff |= (uint8_t)a[i] ^ (uint8_t)b[i];
+  }
+  return diff == 0;
+}
+
+static bool check_basic_auth(httpd_req_t *req) {
+  char hdr[160] = {0};
+  if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) != ESP_OK) {
+    httpd_resp_set_status(req, "401 Unauthorized");
+    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"KC868-A2v3\"");
+    httpd_resp_sendstr(req, "{\"error\":\"Unauthorized\"}");
+    return false;
+  }
+  const char *prefix = "Basic ";
+  if (strncasecmp(hdr, prefix, strlen(prefix)) != 0) {
+    httpd_resp_set_status(req, "401 Unauthorized");
+    httpd_resp_sendstr(req, "{\"error\":\"Invalid auth scheme\"}");
+    return false;
+  }
+  char expected[96];
+  int expected_len = snprintf(expected, sizeof(expected), "%s:%s",
+                              CONFIG_WEB_SERVER_AUTH_USERNAME,
+                              CONFIG_WEB_SERVER_AUTH_PASSWORD);
+  if (expected_len < 0 || (size_t)expected_len >= sizeof(expected)) {
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_sendstr(req, "{\"error\":\"Auth misconfiguration\"}");
+    return false;
+  }
+
+  unsigned char decoded[96] = {0};
+  size_t decoded_len = 0;
+  if (mbedtls_base64_decode(decoded, sizeof(decoded), &decoded_len,
+                            (const unsigned char *)hdr + strlen(prefix),
+                            strlen(hdr) - strlen(prefix)) != 0 ||
+      decoded_len != (size_t)expected_len) {
+    httpd_resp_set_status(req, "401 Unauthorized");
+    httpd_resp_sendstr(req, "{\"error\":\"Invalid credentials\"}");
+    return false;
+  }
+  if (!constant_time_equal((const char *)decoded, expected, (size_t)expected_len)) {
+    httpd_resp_set_status(req, "401 Unauthorized");
+    httpd_resp_sendstr(req, "{\"error\":\"Invalid credentials\"}");
+    return false;
+  }
+  return true;
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t base,
                                 int32_t event_id, void *data) {
   if (base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -42,7 +110,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
   } else if (base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     xSemaphoreTake(s_wifi_mutex, portMAX_DELAY);
     s_wifi_connected = false;
-    strcpy(s_wifi_ip, "0.0.0.0");
+    snprintf(s_wifi_ip, sizeof(s_wifi_ip), "0.0.0.0");
     xSemaphoreGive(s_wifi_mutex);
     if (s_retry_count < 5) {
       esp_wifi_connect();
@@ -146,6 +214,11 @@ static esp_err_t get_root(httpd_req_t *req) {
 }
 
 static esp_err_t get_status(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   system_status_t status;
   system_monitor_get_status(&status);
 
@@ -169,6 +242,11 @@ static esp_err_t get_status(httpd_req_t *req) {
 }
 
 static esp_err_t get_relays(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   char buf[64];
   snprintf(buf, sizeof(buf), "[%s,%s]",
            relay_get(RELAY_CH_1) ? "true" : "false",
@@ -177,6 +255,11 @@ static esp_err_t get_relays(httpd_req_t *req) {
 }
 
 static esp_err_t post_relays(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   char content[256] = {0};
   int recv = httpd_req_recv(req, content, sizeof(content) - 1);
   if (recv <= 0) { send_json(req, "{\"error\":\"empty body\"}"); return ESP_OK; }
@@ -225,6 +308,11 @@ static esp_err_t post_relays(httpd_req_t *req) {
 }
 
 static esp_err_t get_inputs(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   char buf[128];
   snprintf(buf, sizeof(buf), "[%s,%s,%s,%s]",
            digital_input_get(0) ? "true" : "false",
@@ -235,6 +323,11 @@ static esp_err_t get_inputs(httpd_req_t *req) {
 }
 
 static esp_err_t get_sensors(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   sensor_data_t data;
   sensor_hub_read(&data);
   char buf[128];
@@ -248,6 +341,11 @@ static esp_err_t get_sensors(httpd_req_t *req) {
 }
 
 static esp_err_t get_analog(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   int mv1 = analog_input_read_mv(0);
   int mv2 = analog_input_read_mv(1);
   char buf[64];
@@ -256,6 +354,11 @@ static esp_err_t get_analog(httpd_req_t *req) {
 }
 
 static esp_err_t get_wifi(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   wifi_ap_record_t ap_info;
   char ssid[33] = "Not connected";
   if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
@@ -275,6 +378,11 @@ static esp_err_t get_wifi(httpd_req_t *req) {
 }
 
 static esp_err_t post_wifi(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   char content[256] = {0};
   int recv = httpd_req_recv(req, content, sizeof(content) - 1);
   if (recv <= 0) { send_json(req, "{\"ok\":false,\"message\":\"empty body\"}"); return ESP_OK; }
@@ -326,6 +434,11 @@ static esp_err_t post_wifi(httpd_req_t *req) {
 }
 
 static esp_err_t get_config(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   app_config_t cfg;
   config_store_get_snapshot(&cfg);
   char buf[512];
@@ -335,7 +448,8 @@ static esp_err_t get_config(httpd_req_t *req) {
            "\"input_debounce_ms\":%lu,\"input_1_inverted\":%s,"
            "\"input_2_inverted\":%s,\"input_3_inverted\":%s,"
            "\"input_4_inverted\":%s,\"relay_interlock_enabled\":%s,"
-           "\"lcd_enabled\":%s,\"sd_log_enabled\":%s}",
+           "\"lcd_enabled\":%s,\"sd_log_enabled\":%s,"
+           "\"safe_state_timeout_sec\":%lu}",
            cfg.device_name, cfg.mqtt_broker_uri,
            (unsigned long)cfg.sensor_read_interval_sec,
            (unsigned long)cfg.mqtt_publish_interval_sec,
@@ -343,25 +457,32 @@ static esp_err_t get_config(httpd_req_t *req) {
            cfg.input_1_inverted ? "true" : "false",
            cfg.input_2_inverted ? "true" : "false",
            cfg.input_3_inverted ? "true" : "false",
-           cfg.input_4_inverted ? "true" : "false",
-           cfg.relay_interlock_enabled ? "true" : "false",
-           cfg.lcd_enabled ? "true" : "false",
-           cfg.sd_log_enabled ? "true" : "false");
+            cfg.input_4_inverted ? "true" : "false",
+            cfg.relay_interlock_enabled ? "true" : "false",
+            cfg.lcd_enabled ? "true" : "false",
+            cfg.sd_log_enabled ? "true" : "false",
+            (unsigned long)cfg.safe_state_timeout_sec);
   return send_json(req, buf);
 }
 
 static esp_err_t post_config(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   char content[512] = {0};
   int recv = httpd_req_recv(req, content, sizeof(content) - 1);
   if (recv <= 0) { send_json(req, "{\"ok\":false,\"message\":\"empty body\"}"); return ESP_OK; }
 
   const char *keys[] = {"device_name", "mqtt_broker", "sensor_read_interval_sec",
                          "mqtt_publish_interval_sec", "input_debounce_ms",
+                         "safe_state_timeout_sec",
                          "input_1_inverted", "input_2_inverted", "input_3_inverted",
                          "input_4_inverted", "relay_interlock_enabled", "lcd_enabled",
                          "sd_log_enabled", NULL};
   const char *nvs_map[] = {"device_name", "mqtt_broker", "sensor_interval",
-                            "mqtt_interval", "debounce_ms",
+                            "mqtt_interval", "debounce_ms", "safe_state_timeout",
                             "input_1_inverted", "input_2_inverted", "input_3_inverted",
                             "input_4_inverted", "interlock", "lcd_enabled",
                             "sd_log_enabled", NULL};
@@ -377,8 +498,8 @@ static esp_err_t post_config(httpd_req_t *req) {
         int j = 0;
         while (*p && *p != '"' && *p != ',' && *p != '}' && j < 63) val[j++] = *p++;
         if (val[0]) {
-          if (strcmp(val, "true") == 0) strcpy(val, "1");
-          if (strcmp(val, "false") == 0) strcpy(val, "0");
+           if (strcmp(val, "true") == 0) strncpy(val, "1", sizeof(val) - 1);
+           if (strcmp(val, "false") == 0) strncpy(val, "0", sizeof(val) - 1);
           config_store_set_field(nvs_map[i], val);
         }
       }
@@ -389,6 +510,11 @@ static esp_err_t post_config(httpd_req_t *req) {
 }
 
 static esp_err_t post_reboot(httpd_req_t *req) {
+  if (!rate_limit_check()) {
+    httpd_resp_set_status(req, "429 Too Many Requests");
+    return httpd_resp_sendstr(req, "{\"error\":\"Rate limited\"}");
+  }
+  if (!check_basic_auth(req)) return ESP_OK;
   send_json(req, "{\"ok\":true,\"message\":\"Rebooting...\"}");
   vTaskDelay(pdMS_TO_TICKS(500));
   esp_restart();
@@ -413,6 +539,8 @@ static const httpd_uri_t s_uris[] = {
 esp_err_t web_server_init(void) {
   s_wifi_mutex = xSemaphoreCreateMutex();
   if (s_wifi_mutex == NULL) return ESP_ERR_NO_MEM;
+  s_rate_mutex = xSemaphoreCreateMutex();
+  if (s_rate_mutex == NULL) return ESP_ERR_NO_MEM;
 
   wifi_init_apsta();
 

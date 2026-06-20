@@ -2,5 +2,5 @@ idf_component_register(
     SRCS "rtc_manager.c"
     INCLUDE_DIRS "include"
     REQUIRES driver
-    PRIV_REQUIRES freertos
+    PRIV_REQUIRES i2c_bus_manager
 )

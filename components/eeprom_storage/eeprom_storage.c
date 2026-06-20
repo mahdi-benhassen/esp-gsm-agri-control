@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "i2c_bus_manager.h"
 
 static const char *TAG = "EEPROM";
 
@@ -26,6 +27,11 @@ static esp_err_t eeprom_write_page(uint8_t mem_addr, const uint8_t *data, size_t
 }
 
 esp_err_t eeprom_storage_init(void) {
+  if (!i2c_bus_manager_is_initialized()) {
+    ESP_LOGW(TAG, "I2C bus not initialized");
+    return ESP_ERR_INVALID_STATE;
+  }
+
   uint8_t test = 0;
   esp_err_t err = eeprom_storage_read(0, &test, 1);
   if (err == ESP_OK) {
